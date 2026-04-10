@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-04-10T00:00:00+08:00",
+  "project": "SystemHealthScan",
+  "description": "Linux 服务器自动健康巡检工具（设计阶段）",
+  "rootCLAUDE": "CLAUDE.md",
+  "modules": [],
+  "scan": {
+    "totalFiles": 2,
+    "scannedFiles": 2,
+    "coveragePercent": 100,
+    "truncated": false,
+    "ignoredPatterns": [
+      ".git/**"
+    ]
+  },
+  "keyFiles": [
+    {
+      "path": "README.md",
+      "role": "项目简介"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-04-09-linux-health-check-design.md",
+      "role": "核心设计规格文档，定义架构、数据格式、报告结构、阈值、兼容性要求"
+    }
+  ],
+  "gaps": [
+    {
+      "type": "未实现",
+      "description": "collect.sh 采集脚本尚未创建",
+      "priority": "high"
+    },
+    {
+      "type": "未实现",
+      "description": "report.sh 报告生成脚本尚未创建",
+      "priority": "high"
+    },
+    {
+      "type": "未实现",
+      "description": "config/ 目录及 servers.conf、checks.conf 尚未创建",
+      "priority": "high"
+    },
+    {
+      "type": "未实现",
+      "description": "output/ 和 report/ 输出目录尚未创建",
+      "priority": "medium"
+    }
+  ],
+  "nextSteps": [
+    "按设计文档实现 collect.sh（采集脚本）",
+    "按设计文档实现 report.sh（报告生成脚本）",
+    "创建 config/servers.conf 和 config/checks.conf 配置文件模板",
+    "创建 output/ 和 report/ 目录结构"
+  ]
+}

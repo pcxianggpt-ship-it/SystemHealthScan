@@ -22,6 +22,70 @@ print_kv() {
     echo "${key}=${value}"
 }
 
+# Show version information
+show_version() {
+    echo "SystemHealthScan Core Collection Script v${VERSION}"
+    exit 0
+}
+
+# Show usage information
+show_usage() {
+    cat << EOF
+SystemHealthScan Core Collection Script v${VERSION}
+
+Usage: $(basename "$0") [OPTIONS] [OUTPUT_FILE]
+
+Options:
+  -v, --version    Show version information
+  -h, --help       Show this help message
+
+Arguments:
+  OUTPUT_FILE      Output file path (default: stdout)
+
+Examples:
+  $(basename "$0")                          # Output to stdout
+  $(basename "$0") output/server.dat       # Output to file
+  $(basename "$0") -v                      # Show version
+
+Output Format:
+  KEY=VALUE (one per line)
+  Modules separated by '---'
+
+Modules:
+  1. System Information
+  2. Basic Resources
+  3. Network Status
+  4. Process and Services
+  5. Environment Information
+
+EOF
+    exit 0
+}
+
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -v|--version)
+                show_version
+                ;;
+            -h|--help)
+                show_usage
+                ;;
+            -*)
+                echo "ERROR: Unknown option: $1" >&2
+                echo "Use -h or --help for usage information" >&2
+                exit 1
+                ;;
+            *)
+                OUTPUT_FILE="$1"
+                shift
+                ;;
+        esac
+        shift
+    done
+}
+
 # Module 1: System Information
 collect_system_info() {
     # Hostname
@@ -478,12 +542,12 @@ ensure_output_dir() {
     return 0
 }
 
-# Ensure stdout is always restored even on error
-trap 'exec >&3' EXIT
-
 # Main collection function
 main() {
-    local output_file="${1:-/dev/stdout}"
+    # Parse command line arguments
+    parse_args "$@"
+
+    local output_file="${OUTPUT_FILE:-/dev/stdout}"
 
     # If not stdout, ensure parent directory exists
     if [ "${output_file}" != "/dev/stdout" ]; then
@@ -493,6 +557,9 @@ main() {
     # Redirect all output to the specified file
     exec 3>&1
     exec >"${output_file}"
+
+    # Ensure stdout is always restored even on error
+    trap 'exec >&3' EXIT
 
     # Module 1: System Information
     collect_system_info

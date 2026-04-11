@@ -410,11 +410,60 @@ collect_process_services() {
     print_kv "PROCESS_TOP5_MEM" "${top5_mem}"
 }
 
-# Module 5: Environment Information (placeholder)
+# Module 5: Environment Information
 collect_environment_info() {
-    # This module will be implemented in Task 6
-    print_kv "DOCKER_STATUS" "NOT_IMPLEMENTED"
-    print_kv "JAVA_VERSION" "NOT_IMPLEMENTED"
+    # Docker status
+    local docker_status="NOT_INSTALLED"
+    if command -v docker >/dev/null 2>&1; then
+        if docker info >/dev/null 2>&1; then
+            local containers=0 images=0 volumes=0
+            containers=$(docker ps -q 2>/dev/null | wc -l)
+            images=$(docker images -q 2>/dev/null | wc -l)
+            volumes=$(docker volume ls -q 2>/dev/null | wc -l)
+            docker_status="RUNNING|CONTAINERS:${containers}|IMAGES:${images}|VOLUMES:${volumes}"
+        else
+            docker_status="INSTALLED_NOT_RUNNING"
+        fi
+    fi
+    print_kv "DOCKER_STATUS" "${docker_status}"
+
+    # Docker container details
+    local docker_containers=""
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        docker_containers=$(docker ps --format "{{.Names}}:{{.Status}}" 2>/dev/null | head -10 | tr '\n' '|' | sed 's/|$//')
+    fi
+    print_kv "DOCKER_CONTAINER_" "${docker_containers}"
+
+    # Java versions
+    local java_versions=""
+    local java_paths=("/usr/bin/java" "/usr/local/bin/java" "/opt/java/bin/java")
+    for java_path in "${java_paths[@]}"; do
+        if [ -x "${java_path}" ]; then
+            local version
+            version=$("${java_path}" -version 2>&1 | head -1 | awk '{print $NF}')
+            [ -n "${version}" ] && java_versions="${version},${java_versions}"
+        fi
+    done
+    java_versions=$(echo "${java_versions}" | sed 's/,$//')
+    [ -z "${java_versions}" ] && java_versions="NOT_INSTALLED"
+    print_kv "ENV_JAVA_VERSION" "${java_versions}"
+
+    # Python version
+    local python_version="NOT_INSTALLED"
+    for py_cmd in python3 python; do
+        if command -v "${py_cmd}" >/dev/null 2>&1; then
+            python_version=$("${py_cmd}" --version 2>&1 | awk '{print $2}')
+            [ -n "${python_version}" ] && break
+        fi
+    done
+    print_kv "ENV_PYTHON_VERSION" "${python_version}"
+
+    # Node.js version
+    local node_version="NOT_INSTALLED"
+    if command -v node >/dev/null 2>&1; then
+        node_version=$(node --version 2>/dev/null || echo "unknown")
+    fi
+    print_kv "ENV_NODE_VERSION" "${node_version}"
 }
 
 # Main collection function

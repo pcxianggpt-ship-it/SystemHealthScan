@@ -167,7 +167,7 @@ collect_basic_resources() {
     # CPU Top 5 processes (by CPU usage)
     local cpu_top5=""
     if command -v ps >/dev/null 2>&1; then
-        cpu_top5=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{print "PID:"$2":"$11":"$3"%"}' | tr '\n' '|' | sed 's/|$//')
+        cpu_top5=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{print "PID:"$2":"$11":"$3"%"}' | sed 's|.*/||g' | tr '\n' '|' | sed 's/|$//')
     fi
     print_kv "CPU_TOP5" "${cpu_top5}"
 

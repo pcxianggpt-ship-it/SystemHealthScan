@@ -309,7 +309,7 @@ collect_network_status() {
     # DNS resolution test
     local dns_resolve="FAIL"
     if command -v nslookup >/dev/null 2>&1; then
-        dns_resolve=$(nslookup -timeout=2 8.8.8.8 2>/dev/null | grep -q "8.8.8.8" && echo "OK:8.8.8.8:1ms" || echo "FAIL")
+        dns_resolve=$(nslookup -timeout=2 8.8.8.8 2>/dev/null | grep -qiE "server:|name:" && echo "OK:8.8.8.8:1ms" || echo "FAIL")
     elif command -v ping >/dev/null 2>&1; then
         ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1 && dns_resolve="OK:8.8.8.8:1ms" || dns_resolve="FAIL"
     fi

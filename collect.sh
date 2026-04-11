@@ -230,7 +230,7 @@ collect_basic_resources() {
     # CPU Top 5 processes (by CPU usage)
     local cpu_top5=""
     if command -v ps >/dev/null 2>&1; then
-        cpu_top5=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{print "PID:"$2":"$11":"$3"%"}' | sed 's|.*/||g' | tr '\n' '|' | sed 's/|$//')
+        cpu_top5=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{print "PID:"$2":"$11":"$3"%"}' | sed 's|.*/||g' | tr '\n' '|' | sed 's/|$//' || true)
     fi
     print_kv "CPU_TOP5" "${cpu_top5}"
 
@@ -348,13 +348,13 @@ collect_network_status() {
             service=$7;
             sub(/.name=/, "", service);
             printf "%s(%s)|", port, service
-        }' | sed 's/|$//' | sed 's/()/(unknown)/g')
+        }' | sed 's/|$//' | sed 's/()/(unknown)/g' || true)
     elif command -v netstat >/dev/null 2>&1; then
         listen_ports=$(netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
             port=$4;
             sub(/.*:/, "", port);
             printf "%s|", port
-        }' | sed 's/|$//')
+        }' | sed 's/|$//' || true)
     fi
     print_kv "NET_LISTEN_PORTS" "${listen_ports}"
 
@@ -392,9 +392,9 @@ collect_network_status() {
     # Default route
     local default_route=""
     if command -v ip >/dev/null 2>&1; then
-        default_route=$(ip route 2>/dev/null | grep default | awk '{print "default_via_"$3}')
+        default_route=$(ip route 2>/dev/null | grep default | awk '{print "default_via_"$3}' || true)
     elif command -v route >/dev/null 2>&1; then
-        default_route=$(route -n 2>/dev/null | grep "^0.0.0.0" | awk '{print "default_via_"$2}')
+        default_route=$(route -n 2>/dev/null | grep "^0.0.0.0" | awk '{print "default_via_"$2}' || true)
     fi
     print_kv "NET_ROUTE" "${default_route}"
 
@@ -458,7 +458,7 @@ collect_process_services() {
     if command -v ps >/dev/null 2>&1; then
         top5_cpu=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{
             printf "PID:%s:%s:%.1f%%|", $2, $11, $3
-        }' | sed 's/|$//')
+        }' | sed 's/|$//' || true)
     fi
     print_kv "PROCESS_TOP5_CPU" "${top5_cpu}"
 
@@ -468,7 +468,7 @@ collect_process_services() {
         top5_mem=$(ps aux --sort=-%mem 2>/dev/null | head -6 | tail -5 | awk '{
             mem_mb=$6/1024;
             printf "PID:%s:%s:%.0fM|", $2, $11, mem_mb
-        }' | sed 's/|$//')
+        }' | sed 's/|$//' || true)
     fi
     print_kv "PROCESS_TOP5_MEM" "${top5_mem}"
 }
@@ -515,7 +515,7 @@ collect_environment_info() {
     local python_version="NOT_INSTALLED"
     for py_cmd in python3 python; do
         if command -v "${py_cmd}" >/dev/null 2>&1; then
-            python_version=$("${py_cmd}" --version 2>&1 | awk '{print $2}')
+            python_version=$("${py_cmd}" --version 2>&1 | awk '{print $2}' || echo "")
             [ -n "${python_version}" ] && break
         fi
     done

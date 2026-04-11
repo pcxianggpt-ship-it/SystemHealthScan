@@ -183,7 +183,7 @@ collect_basic_resources() {
             mem_used=$(echo "${mem_output}" | awk '{print $3}')
             mem_available=$(echo "${mem_output}" | awk '{print $7}')
             mem_buffers=$(echo "${mem_output}" | awk '{print $6}')
-            mem_cached=$(echo "${mem_output}" | awk '{print $6}')
+            mem_cached=$(echo "${mem_output}" | awk '{print $7}')
 
             # Calculate percentage
             if [ "${mem_total}" -gt 0 ]; then

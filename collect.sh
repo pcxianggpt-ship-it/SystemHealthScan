@@ -475,7 +475,11 @@ ensure_output_dir() {
             return 1
         }
     fi
+    return 0
 }
+
+# Ensure stdout is always restored even on error
+trap 'exec >&3' EXIT
 
 # Main collection function
 main() {

@@ -183,10 +183,10 @@ collect_basic_resources() {
             mem_used=$(echo "${mem_output}" | awk '{print $3}')
             mem_available=$(echo "${mem_output}" | awk '{print $7}')
 
-            # Get buffers and cached from /proc/meminfo
+            # Get buffers and cached from /proc/meminfo (convert KB to MB)
             if [ -f /proc/meminfo ]; then
-                mem_buffers=$(awk '/^Buffers:/ {print $2}' /proc/meminfo)
-                mem_cached=$(awk '/^Cached:/ {print $2}' /proc/meminfo)
+                mem_buffers=$(awk '/^Buffers:/ {print int($2/1024)}' /proc/meminfo)
+                mem_cached=$(awk '/^Cached:/ {print int($2/1024)}' /proc/meminfo)
             fi
 
             # Calculate percentage using actual used memory (excluding cache/buffers)

@@ -466,8 +466,30 @@ collect_environment_info() {
     print_kv "ENV_NODE_VERSION" "${node_version}"
 }
 
+# Helper function to ensure output directory exists
+ensure_output_dir() {
+    local output_dir="${1:-./output}"
+    if [ ! -d "${output_dir}" ]; then
+        mkdir -p "${output_dir}" 2>/dev/null || {
+            echo "ERROR: Failed to create output directory: ${output_dir}" >&2
+            return 1
+        }
+    fi
+}
+
 # Main collection function
 main() {
+    local output_file="${1:-/dev/stdout}"
+
+    # If not stdout, ensure parent directory exists
+    if [ "${output_file}" != "/dev/stdout" ]; then
+        ensure_output_dir "$(dirname "${output_file}")"
+    fi
+
+    # Redirect all output to the specified file
+    exec 3>&1
+    exec >"${output_file}"
+
     # Module 1: System Information
     collect_system_info
     echo "---"
@@ -486,6 +508,9 @@ main() {
 
     # Module 5: Environment Information
     collect_environment_info
+
+    # Restore stdout
+    exec >&3
 }
 
 # Execute main function

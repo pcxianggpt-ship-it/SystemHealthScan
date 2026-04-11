@@ -138,6 +138,125 @@ collect_system_info() {
     print_kv "VIRTUAL_TYPE" "${virt_type}"
 }
 
+# Module 2: Basic Resources
+collect_basic_resources() {
+    # CPU usage (percentage)
+    local cpu_usage=0
+    if command -v mpstat >/dev/null 2>&1; then
+        cpu_usage=$(mpstat 1 1 2>/dev/null | awk '/Average:/ {print 100-$NF}' || echo "0")
+    elif [ -f /proc/stat ]; then
+        local prev_idle=$(awk '/^cpu /{print $5}' /proc/stat)
+        sleep 1
+        local curr_idle=$(awk '/^cpu /{print $5}' /proc/stat)
+        # Simplified calculation - would need more for accurate CPU usage
+        cpu_usage="N/A"
+    else
+        cpu_usage=$(top -bn1 2>/dev/null | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 || echo "0")
+    fi
+    print_kv "CPU_USAGE" "${cpu_usage}"
+
+    # Load average
+    local load_1=0 load_5=0 load_15=0
+    if [ -f /proc/loadavg ]; then
+        read -r load_1 load_5 load_15 _ < <(cat /proc/loadavg)
+    fi
+    print_kv "CPU_LOAD_1" "${load_1}"
+    print_kv "CPU_LOAD_5" "${load_5}"
+    print_kv "CPU_LOAD_15" "${load_15}"
+
+    # CPU Top 5 processes (by CPU usage)
+    local cpu_top5=""
+    if command -v ps >/dev/null 2>&1; then
+        cpu_top5=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{print "PID:"$2":"$11":"$3"%"}' | tr '\n' '|' | sed 's/|$//')
+    fi
+    print_kv "CPU_TOP5" "${cpu_top5}"
+
+    # Memory information
+    local mem_total=0 mem_used=0 mem_available=0 mem_buffers=0 mem_cached=0 mem_percent=0
+
+    if command -v free >/dev/null 2>&1; then
+        local mem_output
+        mem_output=$(free -m 2>/dev/null | grep "^Mem:")
+
+        if [ -n "${mem_output}" ]; then
+            mem_total=$(echo "${mem_output}" | awk '{print $2}')
+            mem_used=$(echo "${mem_output}" | awk '{print $3}')
+            mem_available=$(echo "${mem_output}" | awk '{print $7}')
+            mem_buffers=$(echo "${mem_output}" | awk '{print $6}')
+            mem_cached=$(echo "${mem_output}" | awk '{print $6}')
+
+            # Calculate percentage
+            if [ "${mem_total}" -gt 0 ]; then
+                mem_percent=$(awk "BEGIN {printf \"%.2f\", (${mem_used} / ${mem_total}) * 100}")
+            fi
+        fi
+    fi
+
+    print_kv "MEM_TOTAL" "${mem_total}"
+    print_kv "MEM_USED" "${mem_used}"
+    print_kv "MEM_AVAILABLE" "${mem_available}"
+    print_kv "MEM_BUFFERS" "${mem_buffers}"
+    print_kv "MEM_CACHED" "${mem_cached}"
+    print_kv "MEM_PERCENT" "${mem_percent}"
+
+    # Swap information
+    local swap_total=0 swap_used=0
+    if command -v free >/dev/null 2>&1; then
+        local swap_output
+        swap_output=$(free -m 2>/dev/null | grep "^Swap:")
+
+        if [ -n "${swap_output}" ]; then
+            swap_total=$(echo "${swap_output}" | awk '{print $2}')
+            swap_used=$(echo "${swap_output}" | awk '{print $3}')
+        fi
+    fi
+
+    print_kv "SWAP_TOTAL" "${swap_total}"
+    print_kv "SWAP_USED" "${swap_used}"
+
+    # Disk usage
+    local disk_info=""
+    if command -v df >/dev/null 2>&1; then
+        disk_info=$(df -h 2>/dev/null | grep -vE "^Filesystem|tmpfs|cdrom|overlay" | awk '{
+            split($5, pct, "%");
+            printf "%s:%s:%s:%s|", $1, $2, $3, $5
+        }' | sed 's/|$//')
+    fi
+    print_kv "DISK_" "${disk_info}"
+
+    # Inode usage
+    local inode_info=""
+    if command -v df >/dev/null 2>&1; then
+        inode_info=$(df -i 2>/dev/null | grep -vE "^Filesystem|tmpfs|cdrom|overlay" | awk '{
+            printf "%s:%s/%s:%s%%|", $1, $3, $2, $5
+        }' | sed 's/|$//')
+    fi
+    print_kv "INODE_" "${inode_info}"
+
+    # IO statistics
+    local io_util=0 io_wait=0 iops_read=0 iops_write=0
+    if [ -f /proc/diskstats ]; then
+        local sda_read sda_write
+        sda_read=$(awk '/sda /{print $4}' /proc/diskstats 2>/dev/null || echo "0")
+        sda_write=$(awk '/sda /{print $8}' /proc/diskstats 2>/dev/null || echo "0")
+        # IO stats need iostat for accurate readings
+        io_util="N/A"
+        io_wait=$(top -bn1 2>/dev/null | grep "Cpu(s)" | awk '{print $10}' | cut -d'%' -f1 || echo "0")
+    elif command -v iostat >/dev/null 2>&1; then
+        local iostat_output
+        iostat_output=$(iostat -x 1 1 2>/dev/null | tail -n +4 | head -1)
+        io_util=$(echo "${iostat_output}" | awk '{print $14}')
+        io_wait=$(echo "${iostat_output}" | awk '{print $5}')
+        iops_read=$(echo "${iostat_output}" | awk '{print $4}')
+        iops_write=$(echo "${iostat_output}" | awk '{print $5}')
+    fi
+
+    print_kv "IO_UTIL_sda" "${io_util}"
+    print_kv "IO_WAIT" "${io_wait}"
+    print_kv "IOPS_READ_sda" "${iops_read}"
+    print_kv "IOPS_WRITE_sda" "${iops_write}"
+}
+
 # Main collection function
 main() {
     # Module 1: System Information

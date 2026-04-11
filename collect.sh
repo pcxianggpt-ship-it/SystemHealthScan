@@ -377,7 +377,7 @@ collect_process_services() {
         ps_output=$(ps aux 2>/dev/null)
 
         # Count total processes (excluding header)
-        process_total=$(echo "${ps_output}" | wc -l)
+        process_total=$(echo "${ps_output}" | tail -n +2 | wc -l)
 
         # Count by process state using column 8 (state column)
         process_zombie=$(echo "${ps_output}" | awk 'NR>1 && $8 ~ /^Z$/ {count++} END {print count+0}')

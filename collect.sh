@@ -372,17 +372,17 @@ collect_process_services() {
     # Process statistics
     local process_total=0 process_zombie=0 process_running=0 process_sleeping=0
 
-    if [ -f /proc/stat ]; then
-        process_total=$(grep "^processes" /proc/stat 2>/dev/null | awk '{print $2}' || echo "0")
-    fi
-
     if command -v ps >/dev/null 2>&1; then
         local ps_output
         ps_output=$(ps aux 2>/dev/null)
 
-        process_zombie=$(echo "${ps_output}" | grep -c "[Zz]" || echo "0")
-        process_running=$(echo "${ps_output}" | grep -c "[Rr]" || echo "0")
-        process_sleeping=$(echo "${ps_output}" | grep -c "[Ss]" || echo "0")
+        # Count total processes (excluding header)
+        process_total=$(echo "${ps_output}" | wc -l)
+
+        # Count by process state using column 8 (state column)
+        process_zombie=$(echo "${ps_output}" | awk 'NR>1 && $8 ~ /^Z$/ {count++} END {print count+0}')
+        process_running=$(echo "${ps_output}" | awk 'NR>1 && $8 ~ /^R$/ {count++} END {print count+0}')
+        process_sleeping=$(echo "${ps_output}" | awk 'NR>1 && $8 ~ /^S$/ {count++} END {print count+0}')
     fi
 
     print_kv "PROCESS_TOTAL" "${process_total}"

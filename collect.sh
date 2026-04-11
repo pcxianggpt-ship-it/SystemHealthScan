@@ -43,7 +43,7 @@ collect_system_info() {
     if command -v ip >/dev/null 2>&1; then
         ip=$(ip route get 1 2>/dev/null | awk '{print $7}' | head -1 || echo "")
     elif command -v hostname >/dev/null 2>&1; then
-        ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "")
     fi
     [ -z "${ip}" ] && ip="unknown"
     print_kv "IP" "${ip}"

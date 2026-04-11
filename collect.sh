@@ -41,7 +41,7 @@ collect_system_info() {
     # Primary IP address
     local ip=""
     if command -v ip >/dev/null 2>&1; then
-        ip=$(ip route get 1 2>/dev/null | awk '{print $7}' | head -1)
+        ip=$(ip route get 1 2>/dev/null | awk '{print $7}' | head -1 || echo "")
     elif command -v hostname >/dev/null 2>&1; then
         ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     fi

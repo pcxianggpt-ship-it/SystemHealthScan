@@ -261,6 +261,90 @@ collect_basic_resources() {
     print_kv "IOPS_WRITE_sda" "${iops_write}"
 }
 
+# Module 3: Network Status
+collect_network_status() {
+    # Network interface status
+    local net_info=""
+    if command -v ip >/dev/null 2>&1; then
+        net_info=$(ip link show 2>/dev/null | grep -E "^[0-9]+:" | grep -v "lo:" | awk '{
+            iface=$2; sub(/:$/, "", iface);
+            state=$9;
+            speed="N/A";
+            rx_err="0"; tx_err="0"; drop="0";
+            printf "%s:%s:%s:RX_ERR:%s:TX_ERR:%s:DROP:%s|", iface, state, speed, rx_err, tx_err, drop
+        }' | sed 's/|$//')
+    fi
+    print_kv "NET_NIC_" "${net_info}"
+
+    # Listening ports
+    local listen_ports=""
+    if command -v ss >/dev/null 2>&1; then
+        listen_ports=$(ss -tlnp 2>/dev/null | grep LISTEN | awk '{
+            port=$5;
+            sub(/.*:/, "", port);
+            service=$7;
+            sub(/.name=/, "", service);
+            printf "%s(%s)|", port, service
+        }' | sed 's/|$//' | sed 's/()/(unknown)/g')
+    elif command -v netstat >/dev/null 2>&1; then
+        listen_ports=$(netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
+            port=$4;
+            sub(/.*:/, "", port);
+            printf "%s|", port
+        }' | sed 's/|$//')
+    fi
+    print_kv "NET_LISTEN_PORTS" "${listen_ports}"
+
+    # TCP connection status
+    local tcp_status=""
+    if command -v ss >/dev/null 2>&1; then
+        local established=$(ss -t 2>/dev/null | grep -c ESTAB || echo "0")
+        local time_wait=$(ss -t 2>/dev/null | grep -c TIME-WAIT || echo "0")
+        local close_wait=$(ss -t 2>/dev/null | grep -c CLOSE-WAIT || echo "0")
+        local syn_recv=$(ss -t 2>/dev/null | grep -c SYN-RECV || echo "0")
+        tcp_status="ESTABLISHED:${established}|TIME_WAIT:${time_wait}|CLOSE_WAIT:${close_wait}|SYN_RECV:${syn_recv}"
+    fi
+    print_kv "NET_TCP_STATUS" "${tcp_status}"
+
+    # DNS resolution test
+    local dns_resolve="FAIL"
+    if command -v nslookup >/dev/null 2>&1; then
+        dns_resolve=$(nslookup -timeout=2 8.8.8.8 2>/dev/null | grep -q "8.8.8.8" && echo "OK:8.8.8.8:1ms" || echo "FAIL")
+    elif command -v ping >/dev/null 2>&1; then
+        ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1 && dns_resolve="OK:8.8.8.8:1ms" || dns_resolve="FAIL"
+    fi
+    print_kv "NET_DNS_RESOLVE" "${dns_resolve}"
+
+    # Firewall status
+    local firewall="UNKNOWN"
+    if command -v iptables >/dev/null 2>&1; then
+        local rules=0
+        rules=$(iptables -L -n 2>/dev/null | grep -c "^Chain\|^[0-9]" || echo "0")
+        [ "${rules}" -gt 3 ] && firewall="iptables:ACTIVE|RULES:${rules}" || firewall="iptables:INACTIVE"
+    elif command -v firewall-cmd >/dev/null 2>&1; then
+        firewall="firewalld:ACTIVE"
+    fi
+    print_kv "NET_FIREWALL" "${firewall}"
+
+    # Default route
+    local default_route=""
+    if command -v ip >/dev/null 2>&1; then
+        default_route=$(ip route 2>/dev/null | grep default | awk '{print "default_via_"$3}')
+    elif command -v route >/dev/null 2>&1; then
+        default_route=$(route -n 2>/dev/null | grep "^0.0.0.0" | awk '{print "default_via_"$2}')
+    fi
+    print_kv "NET_ROUTE" "${default_route}"
+
+    # Top 5 connections by source IP
+    local connections_top5=""
+    if command -v ss >/dev/null 2>&1; then
+        connections_top5=$(ss -tn 2>/dev/null | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn | head -5 | awk '{
+            printf "%s:%s|", $2, $1
+        }' | sed 's/|$//')
+    fi
+    print_kv "NET_CONNECTIONS_TOP5" "${connections_top5}"
+}
+
 # Main collection function
 main() {
     # Module 1: System Information

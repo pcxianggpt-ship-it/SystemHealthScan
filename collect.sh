@@ -79,7 +79,6 @@ parse_args() {
                 ;;
             *)
                 OUTPUT_FILE="$1"
-                shift
                 ;;
         esac
         shift

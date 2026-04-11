@@ -19,7 +19,10 @@ readonly NC='\033[0m' # No Color
 print_kv() {
     local key="$1"
     local value="$2"
-    echo "${key}=${value}"
+    # Only output if value is not empty to avoid invalid format lines
+    if [ -n "${value}" ]; then
+        echo "${key}=${value}"
+    fi
 }
 
 # Show version information

@@ -345,6 +345,78 @@ collect_network_status() {
     print_kv "NET_CONNECTIONS_TOP5" "${connections_top5}"
 }
 
+# Module 4: Process and Services
+collect_process_services() {
+    # Service status (check common services)
+    local services=""
+    for svc in nginx apache2 httpd mysql docker sshd rsyslog; do
+        local status="UNKNOWN"
+        if command -v systemctl >/dev/null 2>&1; then
+            if systemctl is-active --quiet "${svc}" 2>/dev/null; then
+                status="RUNNING"
+            elif systemctl is-enabled --quiet "${svc}" 2>/dev/null; then
+                status="STOPPED"
+            fi
+        elif command -v service >/dev/null 2>&1; then
+            if service "${svc}" status 2>/dev/null | grep -q "running"; then
+                status="RUNNING"
+            else
+                status="STOPPED"
+            fi
+        fi
+        [ "${status}" != "UNKNOWN" ] && services="${svc}:${status}|${services}"
+    done
+    services=$(echo "${services}" | sed 's/|$//')
+    print_kv "SERVICE_STATUS" "${services}"
+
+    # Process statistics
+    local process_total=0 process_zombie=0 process_running=0 process_sleeping=0
+
+    if [ -f /proc/stat ]; then
+        process_total=$(grep "^processes" /proc/stat 2>/dev/null | awk '{print $2}' || echo "0")
+    fi
+
+    if command -v ps >/dev/null 2>&1; then
+        local ps_output
+        ps_output=$(ps aux 2>/dev/null)
+
+        process_zombie=$(echo "${ps_output}" | grep -c "[Zz]" || echo "0")
+        process_running=$(echo "${ps_output}" | grep -c "[Rr]" || echo "0")
+        process_sleeping=$(echo "${ps_output}" | grep -c "[Ss]" || echo "0")
+    fi
+
+    print_kv "PROCESS_TOTAL" "${process_total}"
+    print_kv "PROCESS_ZOMBIE" "${process_zombie}"
+    print_kv "PROCESS_RUNNING" "${process_running}"
+    print_kv "PROCESS_SLEEPING" "${process_sleeping}"
+
+    # CPU Top 5 processes
+    local top5_cpu=""
+    if command -v ps >/dev/null 2>&1; then
+        top5_cpu=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{
+            printf "PID:%s:%s:%.1f%%|", $2, $11, $3
+        }' | sed 's/|$//')
+    fi
+    print_kv "PROCESS_TOP5_CPU" "${top5_cpu}"
+
+    # Memory Top 5 processes
+    local top5_mem=""
+    if command -v ps >/dev/null 2>&1; then
+        top5_mem=$(ps aux --sort=-%mem 2>/dev/null | head -6 | tail -5 | awk '{
+            mem_mb=$6/1024;
+            printf "PID:%s:%s:%.0fM|", $2, $11, mem_mb
+        }' | sed 's/|$//')
+    fi
+    print_kv "PROCESS_TOP5_MEM" "${top5_mem}"
+}
+
+# Module 5: Environment Information (placeholder)
+collect_environment_info() {
+    # This module will be implemented in Task 6
+    print_kv "DOCKER_STATUS" "NOT_IMPLEMENTED"
+    print_kv "JAVA_VERSION" "NOT_IMPLEMENTED"
+}
+
 # Main collection function
 main() {
     # Module 1: System Information

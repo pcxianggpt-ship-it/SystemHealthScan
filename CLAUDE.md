@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 架构总览
 
 ```
-AutoCheck/
+SystemHealthScan/
 ├── collect.sh              # 采集脚本（本机/远程通用）
 ├── report.sh               # 汇总报告生成脚本
 ├── config/

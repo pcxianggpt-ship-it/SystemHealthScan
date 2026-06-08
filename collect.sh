@@ -29,6 +29,12 @@ print_kv() {
     fi
 }
 
+print_notice() {
+    local key="$1"
+    local message="$2"
+    print_kv "NOTICE_${key}" "${message}"
+}
+
 # Show version information
 show_version() {
     echo "SystemHealthScan Core Collection Script v${VERSION}"
@@ -221,6 +227,7 @@ collect_system_info() {
 collect_basic_resources() {
     # CPU usage (percentage) - use /proc/stat for accurate reading
     local cpu_usage="N/A"
+    local cpu_usage_notice=""
     if [ -f /proc/stat ]; then
         local prev_line curr_line prev_idle prev_total curr_idle curr_total diff_idle diff_total
         prev_line=$(head -1 /proc/stat)
@@ -238,16 +245,24 @@ collect_basic_resources() {
 
         if [ "${diff_total}" -gt 0 ]; then
             cpu_usage=$(awk "BEGIN {printf \"%.1f\", (1 - ${diff_idle}/${diff_total}) * 100}")
+        else
+            cpu_usage_notice="/proc/stat CPU counters did not change"
         fi
     elif command -v mpstat >/dev/null 2>&1; then
         cpu_usage=$(mpstat 1 1 2>/dev/null | awk '/Average:/ {printf "%.1f", 100-$NF}' || echo "N/A")
+        [ -z "${cpu_usage}" ] && cpu_usage="N/A"
+    else
+        cpu_usage_notice="/proc/stat not readable and mpstat command not found"
     fi
     print_kv "CPU_USAGE" "${cpu_usage}"
+    [ "${cpu_usage}" = "N/A" ] && print_notice "CPU_USAGE" "Unable to collect CPU usage: ${cpu_usage_notice:-collector returned no data}"
 
     # Load average
     local load_1=0 load_5=0 load_15=0
     if [ -f /proc/loadavg ]; then
         read -r load_1 load_5 load_15 _ < /proc/loadavg
+    else
+        print_notice "CPU_LOAD" "Unable to collect CPU load: /proc/loadavg not readable"
     fi
     print_kv "CPU_LOAD_1" "${load_1}"
     print_kv "CPU_LOAD_5" "${load_5}"
@@ -260,11 +275,14 @@ collect_basic_resources() {
             cmd=$11; if (cmd !~ /^\[/) sub(/.*\//, "", cmd);
             printf "PID:%s:%s:%s%%|", $2, cmd, $3
         }' | sed 's/|$//' || true)
+    else
+        print_notice "CPU_TOP5" "Unable to collect top CPU processes: ps command not found"
     fi
     print_kv "CPU_TOP5" "${cpu_top5}"
 
     # Memory information
     local mem_total=0 mem_used=0 mem_available=0 mem_buffers=0 mem_cached=0 mem_percent=0
+    local mem_notice=""
 
     if command -v free >/dev/null 2>&1; then
         local mem_output
@@ -287,7 +305,11 @@ collect_basic_resources() {
                 [ "${real_used}" -lt 0 ] && real_used=0
                 mem_percent=$(awk "BEGIN {printf \"%.2f\", (${real_used} / ${mem_total}) * 100}")
             fi
+        else
+            mem_notice="free command returned no Mem line"
         fi
+    else
+        mem_notice="free command not found"
     fi
 
     print_kv "MEM_TOTAL" "${mem_total}"
@@ -296,6 +318,7 @@ collect_basic_resources() {
     print_kv "MEM_BUFFERS" "${mem_buffers}"
     print_kv "MEM_CACHED" "${mem_cached}"
     print_kv "MEM_PERCENT" "${mem_percent}"
+    [ -n "${mem_notice}" ] && print_notice "MEMORY" "Unable to collect memory metrics: ${mem_notice}"
 
     # Swap information
     local swap_total=0 swap_used=0
@@ -306,7 +329,11 @@ collect_basic_resources() {
         if [ -n "${swap_output}" ]; then
             swap_total=$(echo "${swap_output}" | awk '{print $2}')
             swap_used=$(echo "${swap_output}" | awk '{print $3}')
+        else
+            print_notice "SWAP" "Unable to collect swap metrics: free command returned no Swap line"
         fi
+    else
+        print_notice "SWAP" "Unable to collect swap metrics: free command not found"
     fi
 
     print_kv "SWAP_TOTAL" "${swap_total}"
@@ -319,6 +346,8 @@ collect_basic_resources() {
         NF >= 6 {
             printf "%s:%s:%s:%s|", $6, $2, $3, $5
         }' | sed 's/|$//')
+    else
+        print_notice "DISK" "Unable to collect disk usage: df command not found"
     fi
     print_kv "DISK_" "${disk_info}"
 
@@ -329,6 +358,8 @@ collect_basic_resources() {
         NF >= 6 {
             printf "%s:%s/%s:%s|", $6, $3, $2, $5
         }' | sed 's/|$//')
+    else
+        print_notice "INODE" "Unable to collect inode usage: df command not found"
     fi
     print_kv "INODE_" "${inode_info}"
 
@@ -341,11 +372,17 @@ collect_basic_resources() {
             io_util=$(echo "${iostat_output}" | awk '{print $14}')
             iops_read=$(echo "${iostat_output}" | awk '{print $4}')
             iops_write=$(echo "${iostat_output}" | awk '{print $5}')
+        else
+            print_notice "IO_UTIL" "Unable to collect disk IO metrics: iostat returned no device data"
         fi
+    else
+        print_notice "IO_UTIL" "Unable to collect disk IO metrics: iostat command not found"
     fi
     # Get iowait from /proc/stat
     if [ -f /proc/stat ]; then
         io_wait=$(awk '/^cpu /{total=0; for(i=2;i<=NF;i++) total+=$i; printf "%.1f", $6/total*100}' /proc/stat)
+    else
+        print_notice "IO_WAIT" "Unable to collect IO wait: /proc/stat not readable"
     fi
 
     print_kv "IO_UTIL_sda" "${io_util}"
@@ -367,6 +404,9 @@ collect_network_status() {
             speed="N/A";
             printf "%s:%s:%s|", iface, state, speed
         }' | sed 's/|$//')
+        [ -z "${net_info}" ] && print_notice "NET_NIC" "Unable to collect network interface status: ip command returned no non-loopback interfaces"
+    else
+        print_notice "NET_NIC" "Unable to collect network interface status: ip command not found"
     fi
     print_kv "NET_NIC_" "${net_info}"
 
@@ -396,6 +436,8 @@ collect_network_status() {
             port=$4; sub(/.*:/, "", port);
             printf "%s|", port
         }' | sed 's/|$//' || true)
+    else
+        print_notice "NET_LISTEN_PORTS" "Unable to collect listening ports: ss and netstat commands not found"
     fi
     print_kv "NET_LISTEN_PORTS" "${listen_ports}"
 
@@ -408,6 +450,8 @@ collect_network_status() {
         close_wait=$(ss -t 2>/dev/null | grep -c "CLOSE-WAIT" 2>/dev/null) || close_wait=0
         syn_recv=$(ss -t 2>/dev/null | grep -c "SYN-RECV" 2>/dev/null) || syn_recv=0
         tcp_status="ESTABLISHED:${established}|TIME_WAIT:${time_wait}|CLOSE_WAIT:${close_wait}|SYN_RECV:${syn_recv}"
+    else
+        print_notice "NET_TCP_STATUS" "Unable to collect TCP connection status: ss command not found"
     fi
     print_kv "NET_TCP_STATUS" "${tcp_status}"
 
@@ -421,6 +465,8 @@ collect_network_status() {
         if ping -c 1 -W 2 baidu.com >/dev/null 2>&1; then
             dns_resolve="OK:baidu.com:1ms"
         fi
+    else
+        print_notice "NET_DNS_RESOLVE" "Unable to test DNS resolution: nslookup and ping commands not found"
     fi
     print_kv "NET_DNS_RESOLVE" "${dns_resolve}"
 
@@ -456,11 +502,17 @@ collect_network_status() {
 
     # Default route
     local default_route=""
+    local route_notice=""
     if command -v ip >/dev/null 2>&1; then
         default_route=$(ip route 2>/dev/null | grep default | awk '{print "default_via_"$3}' || true)
+        [ -z "${default_route}" ] && route_notice="no default route found"
     elif command -v route >/dev/null 2>&1; then
         default_route=$(route -n 2>/dev/null | grep "^0.0.0.0" | awk '{print "default_via_"$2}' || true)
+        [ -z "${default_route}" ] && route_notice="no default route found"
+    else
+        route_notice="ip and route commands not found"
     fi
+    [ -n "${route_notice}" ] && print_notice "NET_ROUTE" "Unable to collect default route: ${route_notice}"
     print_kv "NET_ROUTE" "${default_route}"
 
     # Top 5 connections by source IP
@@ -469,6 +521,8 @@ collect_network_status() {
         connections_top5=$(ss -tn 2>/dev/null | awk 'NR>1{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn | head -5 | awk '{
             printf "%s:%s|", $2, $1
         }' | sed 's/|$//')
+    else
+        print_notice "NET_CONNECTIONS_TOP5" "Unable to collect top network connections: ss command not found"
     fi
     print_kv "NET_CONNECTIONS_TOP5" "${connections_top5}"
 }

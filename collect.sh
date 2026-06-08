@@ -4,6 +4,10 @@
 # Output format: KEY=VALUE, one per line
 #
 
+if [ -z "${BASH_VERSION:-}" ] || [ "${BASH:-}" = "/bin/sh" ] || [ "${BASH:-}" = "/usr/bin/sh" ]; then
+    exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 # Script version

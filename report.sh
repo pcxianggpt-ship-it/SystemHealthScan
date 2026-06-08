@@ -138,12 +138,18 @@ parse_args() {
 load_thresholds() {
     log_info "Loading thresholds from ${CHECKS_CONF}"
     while IFS='=' read -r key value; do
-        # Skip comments and empty lines
-        [[ "${key}" =~ ^[[:space:]]*# ]] && continue
+        # Trim whitespace and CRLF before deciding whether the line is usable.
+        key="${key%$'\r'}"
+        value="${value%$'\r'}"
+        key="${key#"${key%%[![:space:]]*}"}"
+        key="${key%"${key##*[![:space:]]}"}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+
+        # Skip comments, blank lines, and malformed keys.
         [[ -z "${key}" ]] && continue
-        # Trim whitespace
-        key=$(echo "${key}" | xargs)
-        value=$(echo "${value}" | xargs)
+        [[ "${key}" == \#* ]] && continue
+        [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
         THRESHOLD["${key}"]="${value}"
     done < "${CHECKS_CONF}"
     log_info "Loaded ${#THRESHOLD[@]} threshold rules"

@@ -72,7 +72,7 @@ EOF
 
 # Parse command line arguments
 parse_args() {
-    while [[ $# -gt 0 ]]; do
+    while [ $# -gt 0 ]; do
         case $1 in
             -v|--version)
                 show_version
@@ -243,7 +243,7 @@ collect_basic_resources() {
     # Load average
     local load_1=0 load_5=0 load_15=0
     if [ -f /proc/loadavg ]; then
-        read -r load_1 load_5 load_15 _ < <(cat /proc/loadavg)
+        read -r load_1 load_5 load_15 _ < /proc/loadavg
     fi
     print_kv "CPU_LOAD_1" "${load_1}"
     print_kv "CPU_LOAD_5" "${load_5}"
@@ -536,19 +536,21 @@ collect_process_services() {
 # Module 5: Java Process Details
 # =============================================================================
 collect_java_processes() {
-    # Find Java processes
-    local java_pids=()
+    # Find Java processes (POSIX-compliant: use newline-separated string instead of array)
+    local java_pids=""
     if command -v pgrep >/dev/null 2>&1; then
-        while IFS= read -r pid; do
-            [ -n "${pid}" ] && java_pids+=("${pid}")
-        done < <(pgrep -f "java" 2>/dev/null || true)
+        java_pids=$(pgrep -f "java" 2>/dev/null || true)
     fi
 
-    local java_count=${#java_pids[@]}
+    local java_count=0
+    if [ -n "${java_pids}" ]; then
+        java_count=$(printf '%s\n' "${java_pids}" | wc -l | tr -d ' ')
+    fi
     print_kv "PROCESS_JAVA_COUNT" "${java_count}"
 
     local idx=0
-    for pid in "${java_pids[@]}"; do
+    # shellcheck disable=SC2086 - intentional word splitting: PIDs are numeric, safe
+    for pid in ${java_pids}; do
         idx=$((idx + 1))
 
         # Skip if process disappeared
@@ -940,9 +942,12 @@ collect_security() {
     # Sysctl key params
     local sysctl_params=""
     for param in net.core.somaxconn vm.swappiness fs.file-max net.ipv4.tcp_max_syn_backlog; do
-        if [ -f "/proc/sys/${param//\.//}" ] 2>/dev/null; then
+        # POSIX: replace bash's ${param//./} with tr
+        local param_path
+        param_path=$(printf '%s' "${param}" | tr '.' '/')
+        if [ -f "/proc/sys/${param_path}" ]; then
             local val
-            val=$(cat "/proc/sys/${param//\.//}" 2>/dev/null || echo "N/A")
+            val=$(cat "/proc/sys/${param_path}" 2>/dev/null || echo "N/A")
             sysctl_params="${param}=${val}|${sysctl_params}"
         elif command -v sysctl >/dev/null 2>&1; then
             local val
@@ -1197,8 +1202,10 @@ collect_environment_info() {
 
     # Java versions
     local java_versions=""
-    local java_paths=("/usr/bin/java" "/usr/local/bin/java" "/opt/java/bin/java")
-    for java_path in "${java_paths[@]}"; do
+    # POSIX: space-separated string instead of array (paths contain no spaces)
+    local java_paths="/usr/bin/java /usr/local/bin/java /opt/java/bin/java"
+    # shellcheck disable=SC2086 - intentional word splitting: standard Linux paths, safe
+    for java_path in ${java_paths}; do
         if [ -x "${java_path}" ]; then
             local version
             version=$("${java_path}" -version 2>&1 | head -1 | awk '{print $NF}' | tr -d '"')

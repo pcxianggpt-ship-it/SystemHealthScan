@@ -78,3 +78,29 @@ SystemHealthScan/
 - collect.sh 和 report.sh 是项目核心入口，修改时保持"采集与报告分离"的架构原则
 - 新增检查项时同步更新 checks.conf 中的阈值配置和报告模板中的对应章节
 - 采集脚本必须兼容 CentOS/Ubuntu/Debian，避免使用发行版特有的命令或路径
+
+## 协作规范
+
+### 文件换行符
+
+- 仓库内所有文本文件（`.md` / `.sh` / `.conf` / `.json` / `.txt` / `.yml` / `.yaml` 等）**统一使用 LF 换行符**，禁止 CRLF
+- **执行机制**：根目录 `.gitattributes` 配置了 `* text=auto eol=lf`，git 在 commit/checkout 时会自动归一化为 LF
+- 新增文件无需手动处理换行符；编辑文件时如发现 CRLF，先用 LF 保存再提交
+- 编辑器配置建议：
+  - VSCode：右下角状态栏 "CRLF" → "LF"
+  - JetBrains：Settings → Editor → Code Style → Line Separator → "Unix and macOS (\n)"
+- AI 修改或创建任何文本文件时，必须使用 LF，不得引入 `\r\n`
+
+### Git 提交规范
+
+- **Commit message 必须用中文撰写**
+- 推荐格式：`<类型>：<简要描述>`，例如：
+  - `feat：新增 CPU 采集模块`
+  - `fix：修复磁盘阈值判断逻辑`
+  - `docs：补充网络采集模块的键值定义`
+  - `refactor：重构报告生成主流程`
+  - `test：补充 collect.sh 边界用例`
+  - `chore：升级 .gitattributes 换行符策略`
+- 类型参考 Conventional Commits：`feat` / `fix` / `docs` / `refactor` / `test` / `chore` / `perf` / `style`
+- 标题行简明扼要（建议 ≤ 50 字符）；正文另起空行补充动机、影响范围、验证方式
+- 多项改动应拆分为多次提交，每次提交语义单一

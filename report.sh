@@ -39,6 +39,10 @@ declare -A MODULE_BOUNDS=()
 # Thresholds from checks.conf
 declare -A THRESHOLD=()
 
+# Filter regexps (see docs/superpowers/specs/2026-06-26-report-layout-design.md §7)
+NIC_FILTER_REGEX='^(veth|br-|docker|cni|flannel|kube-ipvs|virbr|vboxnet|tap|tun)|^lo$'
+MOUNT_FILTER_REGEX='/var/lib/docker/containers/.*/mounts/shm|/var/lib/kubelet/pods/|/var/lib/docker/overlay2'
+
 # Issue collection
 declare -a ISSUES_CRIT=()
 declare -a ISSUES_WARN=()
@@ -306,6 +310,68 @@ parse_compound() {
             "${callback}" "${part}"
         fi
     done
+}
+
+# =============================================================================
+# Layout helpers (see spec §7, §8)
+# =============================================================================
+
+# 过滤虚拟网卡：参数为网卡名，匹配 NIC_FILTER_REGEX 返回 0（要过滤），否则 1
+is_virtual_nic() {
+    local nic_name="$1"
+    [[ "${nic_name}" =~ ${NIC_FILTER_REGEX} ]]
+}
+
+# 过滤容器挂载：参数为挂载点路径，匹配 MOUNT_FILTER_REGEX 返回 0（要过滤），否则 1
+is_container_mount() {
+    local mount_point="$1"
+    [[ "${mount_point}" =~ ${MOUNT_FILTER_REGEX} ]]
+}
+
+# 从 Java 完整命令行提取简短进程名（≤ 50 字符）。算法见 spec §8
+extract_short_process_name() {
+    local cmdline="$1"
+    local result=""
+
+    # 1. 优先取 -jar <path> 的 basename
+    local jar
+    jar=$(echo "${cmdline}" | grep -oE -- '-jar[[:space:]]+[^[:space:]]+\.jar' | head -1 | sed 's/.*-jar[[:space:]]*//')
+    if [[ -n "${jar}" ]]; then
+        result=$(basename "${jar}")
+    fi
+
+    # 2. Tomcat 主类特判
+    if [[ -z "${result}" ]] && echo "${cmdline}" | grep -q "org.apache.catalina.startup.Bootstrap"; then
+        result="tomcat-Bootstrap"
+    fi
+
+    # 3. 取最后一个含至少 2 个 . 的 token（Java 完整包名结构 org.xxx.YYY）
+    #    避免 -c broker.conf 这类参数值被误选为主类
+    if [[ -z "${result}" ]]; then
+        local main_class
+        main_class=$(echo "${cmdline}" | tr ' ' '\n' | grep -vE '^-' | awk -F'.' 'NF>=3' | tail -1)
+        if [[ -n "${main_class}" ]]; then
+            result=$(echo "${main_class}" | awk -F'.' '{print $NF}')
+        fi
+    fi
+
+    # 4. 否则取 java 命令 basename
+    if [[ -z "${result}" ]]; then
+        local first_token
+        first_token=$(echo "${cmdline}" | awk '{print $1}')
+        if [[ -n "${first_token}" ]]; then
+            result=$(basename "${first_token}")
+        else
+            result="unknown"
+        fi
+    fi
+
+    # 5. 若超过 50 字符，截断加 ...
+    if [[ ${#result} -gt 50 ]]; then
+        result="${result:0:47}..."
+    fi
+
+    echo "${result}"
 }
 
 # =============================================================================

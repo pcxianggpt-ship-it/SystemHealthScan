@@ -253,7 +253,7 @@ collect_basic_resources() {
     local cpu_top5=""
     if command -v ps >/dev/null 2>&1; then
         cpu_top5=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{
-            cmd=$11; sub(/.*\//, "", cmd);
+            cmd=$11; if (cmd !~ /^\[/) sub(/.*\//, "", cmd);
             printf "PID:%s:%s:%s%%|", $2, cmd, $3
         }' | sed 's/|$//' || true)
     fi
@@ -311,7 +311,7 @@ collect_basic_resources() {
     # Disk usage - fix: use $6 (mount point) for meaningful output
     local disk_info=""
     if command -v df >/dev/null 2>&1; then
-        disk_info=$(df -h 2>/dev/null | grep -vE "^Filesystem|tmpfs|cdrom|overlay|udev|devtmpfs" | awk '
+        disk_info=$(df -hP 2>/dev/null | grep -vE "^Filesystem|tmpfs|cdrom|overlay|udev|devtmpfs" | awk '
         NF >= 6 {
             printf "%s:%s:%s:%s|", $6, $2, $3, $5
         }' | sed 's/|$//')
@@ -321,7 +321,7 @@ collect_basic_resources() {
     # Inode usage
     local inode_info=""
     if command -v df >/dev/null 2>&1; then
-        inode_info=$(df -i 2>/dev/null | grep -vE "^Filesystem|tmpfs|cdrom|overlay|udev|devtmpfs" | awk '
+        inode_info=$(df -iP 2>/dev/null | grep -vE "^Filesystem|tmpfs|cdrom|overlay|udev|devtmpfs" | awk '
         NF >= 6 {
             printf "%s:%s/%s:%s|", $6, $3, $2, $5
         }' | sed 's/|$//')
@@ -375,6 +375,8 @@ collect_network_status() {
             local_addr=$4;
             port=local_addr;
             sub(/^.*:/, "", port);
+            if (port in seen) next;
+            seen[port]=1;
             # Process info from $6+ (users column)
             proc="unknown";
             for(i=6;i<=NF;i++) {
@@ -430,7 +432,8 @@ collect_network_status() {
         fi
     elif command -v iptables >/dev/null 2>&1; then
         local rules=0
-        rules=$(iptables -L -n 2>/dev/null | grep -c "^Chain\|^[0-9]" || echo "0")
+        rules=$(iptables -L -n 2>/dev/null | grep -c "^Chain\|^[0-9]" || true)
+        rules=${rules:-0}
         if [ "${rules}" -gt 3 ]; then
             firewall="iptables:ACTIVE|RULES:${rules}"
         else
@@ -514,7 +517,7 @@ collect_process_services() {
     local top5_cpu=""
     if command -v ps >/dev/null 2>&1; then
         top5_cpu=$(ps aux --sort=-%cpu 2>/dev/null | head -6 | tail -5 | awk '{
-            cmd=$11; sub(/.*\//, "", cmd);
+            cmd=$11; if (cmd !~ /^\[/) sub(/.*\//, "", cmd);
             printf "PID:%s:%s:%.1f%%|", $2, cmd, $3
         }' | sed 's/|$//' || true)
     fi
@@ -525,7 +528,7 @@ collect_process_services() {
     if command -v ps >/dev/null 2>&1; then
         top5_mem=$(ps aux --sort=-%mem 2>/dev/null | head -6 | tail -5 | awk '{
             mem_mb=$6/1024;
-            cmd=$11; sub(/.*\//, "", cmd);
+            cmd=$11; if (cmd !~ /^\[/) sub(/.*\//, "", cmd);
             printf "PID:%s:%s:%.0fM|", $2, cmd, mem_mb
         }' | sed 's/|$//' || true)
     fi
@@ -991,7 +994,7 @@ collect_crontab() {
             [ -f "${f}" ] || continue
             local fname entries
             fname=$(basename "${f}")
-            entries=$(grep -vE "^\s*#|^\s*$" "${f}" 2>/dev/null | while read -r line; do
+            entries=$(grep -vE "^\s*#|^\s*$|^[A-Z_][A-Z0-9_]*=" "${f}" 2>/dev/null | while read -r line; do
                 local user cmd
                 user=$(echo "${line}" | awk '{print $6}')
                 cmd=$(echo "${line}" | awk '{for(i=7;i<=NF;i++) printf "%s ", $i}' | sed 's/ $//')
@@ -1006,7 +1009,7 @@ collect_crontab() {
     # Also check /etc/crontab
     if [ -f /etc/crontab ]; then
         local etc_crontab
-        etc_crontab=$(grep -vE "^\s*#|^\s*$" /etc/crontab 2>/dev/null | while read -r line; do
+        etc_crontab=$(grep -vE "^\s*#|^\s*$|^[A-Z_][A-Z0-9_]*=" /etc/crontab 2>/dev/null | while read -r line; do
             local user cmd schedule
             schedule=$(echo "${line}" | awk '{printf "%s %s %s %s %s", $1,$2,$3,$4,$5}')
             user=$(echo "${line}" | awk '{print $6}')

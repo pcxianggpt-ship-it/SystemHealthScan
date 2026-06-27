@@ -118,6 +118,16 @@ else
     assert_match "${LATEST_MD}" '\| 主机 \| IP \| Redis \| Nacos \| MySQL 版本 \| MySQL 连接 \| 复制角色 \| InnoDB Buffer \|' "中间件表头"
 fi
 
+# === Task 6: Security section 安全章节 ===
+
+if [[ -z "${LATEST_MD}" ]]; then
+    fail "Task 6: 报告未生成"
+else
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| 端口 \| Root 登录 \| 密码认证 \| 空密码 \| MaxAuth \|' "SSH 配置表头"
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| somaxconn \| swappiness \| file-max \| tcp_syn_backlog \|' "内核参数表头"
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| SELinux \| Fail2ban \| NTP 同步 \| 锁定用户 \| Sudo 今日 \|' "安全综合表头"
+fi
+
 echo ""
 echo "================================"
 echo "总计: ${TOTAL}  通过: ${PASSED}  失败: ${FAILED}"

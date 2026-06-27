@@ -1036,85 +1036,104 @@ generate_security_section() {
 
 ## 3.5 系统安全
 
+### 3.5.1 SSH 配置
+
+| 主机 | IP | 端口 | Root 登录 | 密码认证 | 空密码 | MaxAuth |
+|------|----|------|-----------|----------|--------|---------|
 EOF
 
     for i in "${!SERVER_HOSTNAMES[@]}"; do
         local hostname="${SERVER_HOSTNAMES[$i]}"
-        echo "### ${hostname}" >> "${MD_FILE}"
-        echo "" >> "${MD_FILE}"
-
-        # SSH config
+        local ip="${SERVER_IPS[$i]:-N/A}"
         local ssh_val
         ssh_val=$(get_val "$i" "SSH_CONFIG")
-        echo "- **SSH 配置：** ${ssh_val:-N/A}" >> "${MD_FILE}"
-
-        # SSH failed login
-        local ssh_fail
-        ssh_fail=$(get_val "$i" "SSH_FAILED_LOGIN_TODAY")
-        local fail_count=0
-        if [ -n "${ssh_fail}" ]; then
-            fail_count=$(echo "${ssh_fail}" | cut -d'|' -f1)
-            echo "- **今日 SSH 登录失败：** ${fail_count}" >> "${MD_FILE}"
-
-            local fail_status
-            fail_status=$(check_threshold "LOGIN_FAILED" "${fail_count}")
-            [ "${fail_status}" != "OK" ] && add_issue "${fail_status}" "SSH 登录失败 ${fail_count} 次 (${fail_status})" "${hostname}"
+        # 格式：PORT:22|ROOT_LOGIN:yes|PASSWORD_AUTH:yes|PERMIT_EMPTY:no|MAX_AUTH:6 或 N/A
+        local port="" root_login="" pass_auth="" empty_pw="" max_auth=""
+        if [[ "${ssh_val}" == "PORT:"* ]]; then
+            port=$(echo "${ssh_val}"        | grep -oE 'PORT:[^|]+'         | cut -d: -f2 || true)
+            root_login=$(echo "${ssh_val}"  | grep -oE 'ROOT_LOGIN:[^|]+'   | cut -d: -f2 || true)
+            pass_auth=$(echo "${ssh_val}"   | grep -oE 'PASSWORD_AUTH:[^|]+'| cut -d: -f2 || true)
+            empty_pw=$(echo "${ssh_val}"    | grep -oE 'PERMIT_EMPTY:[^|]+' | cut -d: -f2 || true)
+            max_auth=$(echo "${ssh_val}"    | grep -oE 'MAX_AUTH:[^|]+'     | cut -d: -f2 || true)
         fi
+        [[ -z "${port}" ]] && port="N/A"
+        [[ -z "${root_login}" ]] && root_login="N/A"
+        [[ -z "${pass_auth}" ]] && pass_auth="N/A"
+        [[ -z "${empty_pw}" ]] && empty_pw="N/A"
+        [[ -z "${max_auth}" ]] && max_auth="N/A"
+        printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" "${port}" "${root_login}" "${pass_auth}" "${empty_pw}" "${max_auth}" >> "${MD_FILE}"
+    done
 
-        # Trusted keys
-        local trusted
-        trusted=$(get_val "$i" "SSH_TRUSTED_KEYS")
-        echo "- **SSH 信任密钥数：** ${trusted:-0}" >> "${MD_FILE}"
+    # 内核关键参数
+    cat >> "${MD_FILE}" <<EOF
 
-        # User login today
-        local user_login
-        user_login=$(get_val "$i" "USER_LOGIN_TODAY")
-        echo "- **今日用户登录：** ${user_login:-无记录}" >> "${MD_FILE}"
+### 3.5.2 内核关键参数
 
-        # Sudo today
-        local sudo_val
-        sudo_val=$(get_val "$i" "USER_SUDO_TODAY")
-        echo "- **今日 Sudo 操作：** ${sudo_val:-0}" >> "${MD_FILE}"
+| 主机 | IP | somaxconn | swappiness | file-max | tcp_syn_backlog |
+|------|----|-----------|------------|----------|-----------------|
+EOF
 
-        # Password expire
-        local pass_exp
-        pass_exp=$(get_val "$i" "USER_PASSWORD_EXPIRE")
-        echo "- **密码过期策略：** ${pass_exp:-N/A}" >> "${MD_FILE}"
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+        local sysctl_val
+        sysctl_val=$(get_val "$i" "SYSCTL_KEY_PARAMS")
+        # 格式：key=value|key=value|...
+        local somaxconn="" swappiness="" file_max="" tcp_syn=""
+        somaxconn=$(echo "${sysctl_val}"  | grep -oE 'net\.core\.somaxconn=[^|]+'         | cut -d= -f2 || true)
+        swappiness=$(echo "${sysctl_val}" | grep -oE 'vm\.swappiness=[^|]+'              | cut -d= -f2 || true)
+        file_max=$(echo "${sysctl_val}"   | grep -oE 'fs\.file-max=[^|]+'                | cut -d= -f2 || true)
+        tcp_syn=$(echo "${sysctl_val}"    | grep -oE 'net\.ipv4\.tcp_max_syn_backlog=[^|]+' | cut -d= -f2 || true)
+        [[ -z "${somaxconn}" ]]  && somaxconn="N/A"
+        [[ -z "${swappiness}" ]] && swappiness="N/A"
+        [[ -z "${file_max}" ]]   && file_max="N/A"
+        [[ -z "${tcp_syn}" ]]    && tcp_syn="N/A"
+        printf "| %s | %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" "${somaxconn}" "${swappiness}" "${file_max}" "${tcp_syn}" >> "${MD_FILE}"
+    done
 
-        # Locked users
-        local locked
-        locked=$(get_val "$i" "USER_LOCKED")
-        echo "- **锁定用户数：** ${locked:-0}" >> "${MD_FILE}"
+    # 安全综合状态
+    cat >> "${MD_FILE}" <<EOF
 
-        # SELinux
-        local selinux
+### 3.5.3 安全综合状态
+
+| 主机 | IP | SELinux | Fail2ban | NTP 同步 | 锁定用户 | Sudo 今日 |
+|------|----|---------|----------|----------|----------|-----------|
+EOF
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+        local selinux="" fail2ban="" ntp="" locked="" sudo_today=""
         selinux=$(get_val "$i" "SELINUX_STATUS")
-        echo "- **SELinux：** ${selinux:-N/A}" >> "${MD_FILE}"
-
-        # Fail2ban
-        local fail2ban
         fail2ban=$(get_val "$i" "FAIL2BAN_STATUS")
-        echo "- **Fail2ban：** ${fail2ban:-N/A}" >> "${MD_FILE}"
-
-        # Sysctl
-        local sysctl
-        sysctl=$(get_val "$i" "SYSCTL_KEY_PARAMS")
-        if [ -n "${sysctl}" ]; then
-            echo "- **内核关键参数：**" >> "${MD_FILE}"
-            IFS='|' read -ra parts <<< "${sysctl}"
-            for part in "${parts[@]}"; do
-                [ -z "${part}" ] && continue
-                echo "  - \`${part}\`" >> "${MD_FILE}"
-            done
-        fi
-
-        # NTP
-        local ntp
         ntp=$(get_val "$i" "NTP_SYNC")
-        echo "- **NTP 同步：** ${ntp:-N/A}" >> "${MD_FILE}"
-        [ "${ntp}" = "NOT_SYNCED" ] && add_issue "WARN" "NTP 未同步" "${hostname}"
+        locked=$(get_val "$i" "USER_LOCKED")
+        sudo_today=$(get_val "$i" "USER_SUDO_TODAY")
+        [[ -z "${selinux}" ]]   && selinux="N/A"
+        [[ -z "${fail2ban}" ]]  && fail2ban="N/A"
+        [[ -z "${ntp}" ]]       && ntp="N/A"
+        [[ -z "${locked}" ]]    && locked="N/A"
+        [[ -z "${sudo_today}" ]] && sudo_today="N/A"
+        printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" "${selinux}" "${fail2ban}" "${ntp}" "${locked}" "${sudo_today}" >> "${MD_FILE}"
+    done
 
-        echo "" >> "${MD_FILE}"
+    # 今日登录用户
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.5.4 今日登录用户
+
+EOF
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+        local login
+        login=$(get_val "$i" "USER_LOGIN_TODAY")
+        [[ -z "${login}" ]] && login="无"
+        printf "**%s (%s)：** %s\n\n" "${hostname}" "${ip}" "${login}" >> "${MD_FILE}"
     done
 }
 

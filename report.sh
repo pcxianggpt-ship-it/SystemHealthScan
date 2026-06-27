@@ -1146,50 +1146,62 @@ generate_crontab_section() {
 
 ## 3.6 Crontab 分析
 
+| 主机 | IP | 用户 | 来源 | 调度 | 命令 |
+|------|----|----|------|------|------|
 EOF
 
     for i in "${!SERVER_HOSTNAMES[@]}"; do
         local hostname="${SERVER_HOSTNAMES[$i]}"
-        echo "### ${hostname}" >> "${MD_FILE}"
-        echo "" >> "${MD_FILE}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+        local cron_val
+        cron_val=$(get_val "$i" "CRONTAB_SYSTEM")
+        [[ -z "${cron_val}" || "${cron_val}" == "NONE" ]] && continue
 
-        # System crontab
-        local cron_sys
-        cron_sys=$(get_val "$i" "CRONTAB_SYSTEM")
-        if [ -n "${cron_sys}" ]; then
-            echo "**系统定时任务：**" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-            echo "| 用户 | 来源 | 调度 | 命令 |" >> "${MD_FILE}"
-            echo "|------|------|------|------|" >> "${MD_FILE}"
-            # Handle || in commands: replace with placeholder, split by |, restore
-            local cron_safe="${cron_sys//||/__PIPE_PIPE__}"
-            IFS='|' read -ra parts <<< "${cron_safe}"
-            for part in "${parts[@]}"; do
-                [ -z "${part}" ] && continue
-                # Restore || in the part
-                part="${part//__PIPE_PIPE__/||}"
-                local user source schedule cmd
-                user=$(echo "${part}" | cut -d: -f1)
-                source=$(echo "${part}" | cut -d: -f2)
-                schedule=$(echo "${part}" | cut -d: -f3)
-                # Command may contain colons, take from field 4 onwards
-                cmd=$(echo "${part}" | cut -d: -f4-)
-                printf "| %s | %s | %s | %s |\n" "${user}" "${source}" "${schedule}" "${cmd}" >> "${MD_FILE}"
-            done
-            echo "" >> "${MD_FILE}"
-        fi
-
-        # Anacron
-        local anacron
-        anacron=$(get_val "$i" "CRONTAB_ANACRON")
-        echo "**Anacron：** ${anacron:-N/A}" >> "${MD_FILE}"
-
-        # Analysis
-        local analysis
-        analysis=$(get_val "$i" "CRONTAB_ANALYSIS")
-        echo "**分析结果：** ${analysis:-N/A}" >> "${MD_FILE}"
-        echo "" >> "${MD_FILE}"
+        # 格式：user:source:schedule:cmd|...
+        # cmd 可能含 ":"，用 awk 重构第 4 段以后的内容
+        IFS='|' read -ra parts <<< "${cron_val}"
+        for part in "${parts[@]}"; do
+            [[ -z "${part}" ]] && continue
+            local user="" source="" schedule="" cmd=""
+            user=$(echo "${part}"     | awk -F: '{print $1}')
+            source=$(echo "${part}"   | awk -F: '{print $2}')
+            schedule=$(echo "${part}" | awk -F: '{print $3}')
+            cmd=$(echo "${part}"      | awk -F: '{for(j=4;j<=NF;j++) printf "%s%s", $j, (j<NF?":":"")}')
+            [[ -z "${user}" ]]     && user="N/A"
+            [[ -z "${source}" ]]   && source="N/A"
+            [[ -z "${schedule}" ]] && schedule="N/A"
+            [[ -z "${cmd}" ]]      && cmd="N/A"
+            printf "| %s | %s | %s | %s | %s | %s |\n" \
+                "${hostname}" "${ip}" "${user}" "${source}" "${schedule}" "${cmd}" >> "${MD_FILE}"
+        done
     done
+
+    # Anacron 单独段落（仅有数据时输出）
+    local any_anacron=0
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local anacron_val
+        anacron_val=$(get_val "$i" "CRONTAB_ANACRON")
+        if [[ -n "${anacron_val}" && "${anacron_val}" != "N/A" ]]; then
+            any_anacron=1
+            break
+        fi
+    done
+
+    if [[ ${any_anacron} -eq 1 ]]; then
+        cat >> "${MD_FILE}" <<EOF
+
+### Anacron
+
+EOF
+        for i in "${!SERVER_HOSTNAMES[@]}"; do
+            local hostname="${SERVER_HOSTNAMES[$i]}"
+            local ip="${SERVER_IPS[$i]:-N/A}"
+            local anacron_val
+            anacron_val=$(get_val "$i" "CRONTAB_ANACRON")
+            [[ -z "${anacron_val}" || "${anacron_val}" == "N/A" ]] && continue
+            printf "**%s (%s)：** %s\n\n" "${hostname}" "${ip}" "${anacron_val}" >> "${MD_FILE}"
+        done
+    fi
 }
 
 # =============================================================================

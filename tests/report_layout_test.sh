@@ -128,6 +128,14 @@ else
     assert_match "${LATEST_MD}" '\| 主机 \| IP \| SELinux \| Fail2ban \| NTP 同步 \| 锁定用户 \| Sudo 今日 \|' "安全综合表头"
 fi
 
+# === Task 7: Crontab 章节 ===
+
+if [[ -z "${LATEST_MD}" ]]; then
+    fail "Task 7: 报告未生成"
+else
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| 用户 \| 来源 \| 调度 \| 命令 \|' "Crontab 表头"
+fi
+
 echo ""
 echo "================================"
 echo "总计: ${TOTAL}  通过: ${PASSED}  失败: ${FAILED}"

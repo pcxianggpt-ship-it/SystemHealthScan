@@ -929,6 +929,8 @@ EOF
         local java_count
         java_count=$(get_val "$i" "PROCESS_JAVA_COUNT")
         [[ -z "${java_count}" ]] && continue
+        # 仅处理数字值，避免 -eq 触发算术错误
+        [[ "${java_count}" =~ ^[0-9]+$ ]] || continue
         [[ "${java_count}" -eq 0 ]] && continue
 
         local idx=1
@@ -938,6 +940,7 @@ EOF
             # JAVA_PS_<idx> 是复合字段：USER:user|PID:12345|START:...|...
             ps_field=$(get_val "$i" "JAVA_PS_${idx}")
             pid=$(echo "${ps_field}" | grep -oE 'PID:[^|]+' | cut -d: -f2)
+            [[ -z "${pid}" ]] && pid="N/A"
 
             cmdline=$(get_val "$i" "JAVA_CMD_${idx}")
             short_name=$(extract_short_process_name "${cmdline}")

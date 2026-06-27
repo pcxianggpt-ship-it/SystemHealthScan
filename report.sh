@@ -1249,6 +1249,38 @@ EOF
     echo "" >> "${MD_FILE}"
     echo "---" >> "${MD_FILE}"
     echo "" >> "${MD_FILE}"
+
+    # 附录 B：Java 进程完整命令行
+    cat >> "${MD_FILE}" <<'EOF'
+
+## 附录 B：Java 进程完整命令行
+
+EOF
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+        local java_count
+        java_count=$(get_val "$i" "PROCESS_JAVA_COUNT")
+        [[ -z "${java_count}" ]] && continue
+        [[ "${java_count}" =~ ^[0-9]+$ ]] || continue
+        [[ "${java_count}" -eq 0 ]] && continue
+
+        printf "### B.%d %s (%s)\n\n" $((i + 1)) "${hostname}" "${ip}" >> "${MD_FILE}"
+
+        local idx=1
+        while [[ ${idx} -le ${java_count} ]]; do
+            local ps_field pid cmdline
+            ps_field=$(get_val "$i" "JAVA_PS_${idx}")
+            pid=$(echo "${ps_field}" | grep -oE 'PID:[^|]+' | cut -d: -f2)
+            [[ -z "${pid}" ]] && pid="N/A"
+            cmdline=$(get_val "$i" "JAVA_CMD_${idx}")
+            [[ -z "${cmdline}" ]] && cmdline="(unknown)"
+            printf "#### PID %s\n\n\`\`\`\n%s\n\`\`\`\n\n" "${pid}" "${cmdline}" >> "${MD_FILE}"
+            idx=$((idx + 1))
+        done
+    done
+
     echo "*报告由 AutoSystemCheck report.sh v${VERSION} 自动生成*" >> "${MD_FILE}"
 }
 

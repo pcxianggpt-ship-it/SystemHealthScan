@@ -102,6 +102,14 @@ else
     assert_match "${LATEST_MD}" '\| 主机 \| IP \| PID \| 进程名 \| Xmx \| GC Old% \| OOM \| 日志路径 \|' "Java 详情表头"
 fi
 
+# === Task 4: 附录 B Java 完整命令行 ===
+
+if [[ -z "${LATEST_MD}" ]]; then
+    fail "Task 4: 报告未生成"
+else
+    assert_match "${LATEST_MD}" '## 附录 B：Java 进程完整命令行' "附录 B 标题存在"
+fi
+
 echo ""
 echo "================================"
 echo "总计: ${TOTAL}  通过: ${PASSED}  失败: ${FAILED}"

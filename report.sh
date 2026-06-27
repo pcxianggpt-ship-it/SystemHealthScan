@@ -981,37 +981,48 @@ generate_middleware_section() {
 
 ## 3.4 中间件状态
 
+| 主机 | IP | Redis | Nacos | MySQL 版本 | MySQL 连接 | 复制角色 | InnoDB Buffer |
+|------|----|-------|-------|-----------|-----------|---------|---------------|
 EOF
 
     for i in "${!SERVER_HOSTNAMES[@]}"; do
         local hostname="${SERVER_HOSTNAMES[$i]}"
-        echo "### ${hostname}" >> "${MD_FILE}"
-        echo "" >> "${MD_FILE}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
 
-        # Redis
-        local redis_val
-        redis_val=$(get_val "$i" "REDIS_STATUS")
-        echo "- **Redis：** ${redis_val:-N/A}" >> "${MD_FILE}"
+        local redis nacos mysql_ver mysql_conn repl innodb
+        redis=$(get_val "$i" "REDIS_STATUS")
+        nacos=$(get_val "$i" "NACOS_STATUS")
+        # REDIS_STATUS 可能是 "NOT_RUNNING" 或 "RUNNING|VERSION:..."；统一显示 RUNNING/NOT_RUNNING
+        [[ "${redis}" == RUNNING* ]] && redis="RUNNING"
+        [[ -z "${redis}" ]] && redis="N/A"
+        [[ "${nacos}" == RUNNING* ]] && nacos="RUNNING"
+        [[ -z "${nacos}" ]] && nacos="N/A"
 
-        # Nacos
-        local nacos_val
-        nacos_val=$(get_val "$i" "NACOS_STATUS")
-        echo "- **Nacos：** ${nacos_val:-N/A}" >> "${MD_FILE}"
+        # MYSQL_STATUS 格式：RUNNING|VERSION:5.7|CONNECTIONS:10/100|...
+        local mysql_status
+        mysql_status=$(get_val "$i" "MYSQL_STATUS")
+        if [[ "${mysql_status}" == RUNNING\|* ]]; then
+            mysql_ver=$(echo "${mysql_status}" | grep -oE 'VERSION:[^|]+' | cut -d: -f2 || true)
+            mysql_conn=$(echo "${mysql_status}" | grep -oE 'CONNECTIONS:[^|]+' | cut -d: -f2 || true)
+            [[ -z "${mysql_ver}" ]] && mysql_ver="N/A"
+            [[ -z "${mysql_conn}" ]] && mysql_conn="N/A"
+        else
+            mysql_ver="${mysql_status:-N/A}"
+            mysql_conn="N/A"
+        fi
 
-        # MySQL
-        local mysql_val
-        mysql_val=$(get_val "$i" "MYSQL_STATUS")
-        echo "- **MySQL：** ${mysql_val:-N/A}" >> "${MD_FILE}"
+        # MYSQL_REPLICATION 格式：ROLE:MASTER|SLAVE_STATUS:N/A|BEHIND:0s
+        local repl_val
+        repl_val=$(get_val "$i" "MYSQL_REPLICATION")
+        repl=$(echo "${repl_val}" | grep -oE 'ROLE:[^|]+' | cut -d: -f2 || true)
+        [[ -z "${repl}" ]] && repl="${repl_val:-N/A}"
 
-        local mysql_repl
-        mysql_repl=$(get_val "$i" "MYSQL_REPLICATION")
-        [ -n "${mysql_repl}" ] && echo "  - 主从复制：${mysql_repl}" >> "${MD_FILE}"
+        innodb=$(get_val "$i" "MYSQL_INNODB_BUFFER")
+        [[ -z "${innodb}" ]] && innodb="N/A"
 
-        local mysql_buf
-        mysql_buf=$(get_val "$i" "MYSQL_INNODB_BUFFER")
-        [ -n "${mysql_buf}" ] && echo "  - InnoDB Buffer：${mysql_buf}" >> "${MD_FILE}"
-
-        echo "" >> "${MD_FILE}"
+        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" "${redis}" "${nacos}" \
+            "${mysql_ver}" "${mysql_conn}" "${repl}" "${innodb}" >> "${MD_FILE}"
     done
 }
 

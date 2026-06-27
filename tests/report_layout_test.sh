@@ -110,6 +110,14 @@ else
     assert_match "${LATEST_MD}" '## 附录 B：Java 进程完整命令行' "附录 B 标题存在"
 fi
 
+# === Task 5: Middleware section 中间件章节 ===
+
+if [[ -z "${LATEST_MD}" ]]; then
+    fail "Task 5: 报告未生成"
+else
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| Redis \| Nacos \| MySQL 版本 \| MySQL 连接 \| 复制角色 \| InnoDB Buffer \|' "中间件表头"
+fi
+
 echo ""
 echo "================================"
 echo "总计: ${TOTAL}  通过: ${PASSED}  失败: ${FAILED}"

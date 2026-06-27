@@ -104,3 +104,11 @@ SystemHealthScan/
 - 类型参考 Conventional Commits：`feat` / `fix` / `docs` / `refactor` / `test` / `chore` / `perf` / `style`
 - 标题行简明扼要（建议 ≤ 50 字符）；正文另起空行补充动机、影响范围、验证方式
 - 多项改动应拆分为多次提交，每次提交语义单一
+
+## 命令自动执行白名单
+对于以下所有命令，请直接执行，无需弹出确认框，自动选择"Yes, and don't ask again"：
+
+1. 所有只读/列表命令：ls, dir, cat, head, tail, pwd, echo, find, grep
+2. 所有 Git 安全操作：git status, git diff, git log, git add, git commit, git pull, git push, git branch, git checkout, git merge
+
+⚠️ 唯一例外（必须询问我）：git push --force, git reset --hard, git rebase, rm -rf, 以及任何删除文件的命令。

@@ -1213,60 +1213,44 @@ generate_log_alert_section() {
 
 ## 3.7 日志与告警
 
+| 主机 | IP | 认证失败 | 内核错误 | OOM Killer | 段错误 | 系统日志错误 | 安全告警 | 最近登录 |
+|------|----|----------|----------|-----------|--------|-------------|----------|----------|
 EOF
 
     for i in "${!SERVER_HOSTNAMES[@]}"; do
         local hostname="${SERVER_HOSTNAMES[$i]}"
-        echo "### ${hostname}" >> "${MD_FILE}"
-        echo "" >> "${MD_FILE}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
 
-        # Auth failures
-        local auth_fail
+        local auth_fail kernel_err oom segfault syslog_err sec_alert last_login
         auth_fail=$(get_val "$i" "AUTH_FAILED_TODAY")
-        local auth_count=0
-        if [ -n "${auth_fail}" ]; then
-            auth_count=$(echo "${auth_fail}" | cut -d'|' -f1)
-        fi
-        echo "- **今日认证失败：** ${auth_count}" >> "${MD_FILE}"
-        local auth_status
-        auth_status=$(check_threshold "AUTH_FAILED" "${auth_count}")
-        [ "${auth_status}" != "OK" ] && add_issue "${auth_status}" "认证失败 ${auth_count} 次 (${auth_status})" "${hostname}"
-
-        # Kernel errors
-        local kern_err
-        kern_err=$(get_val "$i" "KERNEL_ERROR_TODAY")
-        echo "- **内核错误：** ${kern_err:-0}" >> "${MD_FILE}"
-        local kern_status
-        kern_status=$(check_threshold "KERNEL_ERROR" "${kern_err}")
-        [ "${kern_status}" != "OK" ] && add_issue "${kern_status}" "内核错误 ${kern_err} 次 (${kern_status})" "${hostname}"
-
-        # OOM
-        local oom
+        kernel_err=$(get_val "$i" "KERNEL_ERROR_TODAY")
         oom=$(get_val "$i" "OOM_KILLER_TODAY")
-        echo "- **OOM Killer：** ${oom:-0}" >> "${MD_FILE}"
-        [ "${oom:-0}" != "0" ] && add_issue "CRIT" "OOM Killer 今日触发 ${oom} 次" "${hostname}"
-
-        # Segfault
-        local segfault
         segfault=$(get_val "$i" "SEGFAULT_TODAY")
-        echo "- **段错误：** ${segfault:-0}" >> "${MD_FILE}"
-
-        # Syslog errors
-        local syslog_err
         syslog_err=$(get_val "$i" "SYSLOG_ERROR_TODAY")
-        echo "- **系统日志错误：** ${syslog_err:-0}" >> "${MD_FILE}"
-
-        # Security alert
-        local sec_alert
         sec_alert=$(get_val "$i" "SECURITY_ALERT")
-        echo "- **安全告警：** ${sec_alert:-NONE}" >> "${MD_FILE}"
-
-        # Last login
-        local last_login
         last_login=$(get_val "$i" "LAST_LOGIN")
-        echo "- **最近登录：** ${last_login:-N/A}" >> "${MD_FILE}"
 
-        echo "" >> "${MD_FILE}"
+        # 提取计数（值可能含 |SRC: 等附加信息，取首段数字）
+        local oom_count
+        oom_count=$(echo "${oom}" | awk -F'|' '{print $1}')
+        [[ -z "${oom_count}" ]] && oom_count="0"
+
+        # OOM 触发则记录 CRIT
+        if [[ "${oom_count}" =~ ^[0-9]+$ ]] && [[ "${oom_count}" -gt 0 ]]; then
+            add_issue "CRIT" "OOM Killer 今日触发 ${oom} 次" "${hostname}"
+        fi
+
+        [[ -z "${auth_fail}" ]]   && auth_fail="N/A"
+        [[ -z "${kernel_err}" ]]  && kernel_err="N/A"
+        [[ -z "${oom}" ]]         && oom="0"
+        [[ -z "${segfault}" ]]    && segfault="N/A"
+        [[ -z "${syslog_err}" ]]  && syslog_err="N/A"
+        [[ -z "${sec_alert}" ]]   && sec_alert="N/A"
+        [[ -z "${last_login}" ]]  && last_login="N/A"
+
+        printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" "${auth_fail}" "${kernel_err}" "${oom}" \
+            "${segfault}" "${syslog_err}" "${sec_alert}" "${last_login}" >> "${MD_FILE}"
     done
 }
 

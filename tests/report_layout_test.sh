@@ -136,6 +136,14 @@ else
     assert_match "${LATEST_MD}" '\| 主机 \| IP \| 用户 \| 来源 \| 调度 \| 命令 \|' "Crontab 表头"
 fi
 
+# === Task 8: Log & Alert 章节 ===
+
+if [[ -z "${LATEST_MD}" ]]; then
+    fail "Task 8: 报告未生成"
+else
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| 认证失败 \| 内核错误 \| OOM Killer \| 段错误 \| 系统日志错误 \| 安全告警 \| 最近登录 \|' "日志告警表头"
+fi
+
 echo ""
 echo "================================"
 echo "总计: ${TOTAL}  通过: ${PASSED}  失败: ${FAILED}"

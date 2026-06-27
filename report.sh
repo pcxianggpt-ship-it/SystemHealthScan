@@ -780,9 +780,12 @@ EOF
         local ip="${SERVER_IPS[$i]:-N/A}"
         local ports_val
         ports_val=$(get_val "$i" "NET_LISTEN_PORTS")
-        [ -z "${ports_val}" ] && ports_val="N/A"
-        printf "**%s (%s)** 监听端口：\n\n%s\n\n" \
-            "${hostname}" "${ip}" "${ports_val}" >> "${MD_FILE}"
+        if [[ -z "${ports_val}" ]]; then
+            printf "**%s (%s)** 监听端口：（无）\n\n" "${hostname}" "${ip}" >> "${MD_FILE}"
+        else
+            printf "**%s (%s)** 监听端口：\n\n%s\n\n" \
+                "${hostname}" "${ip}" "${ports_val}" >> "${MD_FILE}"
+        fi
     done
 
     # 网络附属

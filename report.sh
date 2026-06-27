@@ -1001,13 +1001,14 @@ EOF
         # MYSQL_STATUS 格式：RUNNING|VERSION:5.7|CONNECTIONS:10/100|...
         local mysql_status
         mysql_status=$(get_val "$i" "MYSQL_STATUS")
-        if [[ "${mysql_status}" == RUNNING\|* ]]; then
+        if [[ "${mysql_status}" == "RUNNING|"* ]]; then
             mysql_ver=$(echo "${mysql_status}" | grep -oE 'VERSION:[^|]+' | cut -d: -f2 || true)
             mysql_conn=$(echo "${mysql_status}" | grep -oE 'CONNECTIONS:[^|]+' | cut -d: -f2 || true)
             [[ -z "${mysql_ver}" ]] && mysql_ver="N/A"
             [[ -z "${mysql_conn}" ]] && mysql_conn="N/A"
         else
-            mysql_ver="${mysql_status:-N/A}"
+            # NOT_RUNNING / RUNNING|NO_CLIENT / 空：版本与连接都显示 N/A
+            mysql_ver="N/A"
             mysql_conn="N/A"
         fi
 

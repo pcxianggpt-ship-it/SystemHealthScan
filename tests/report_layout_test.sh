@@ -54,6 +54,36 @@ echo ""
 
 # Task 1 helpers 测试占位（后续 task 会扩展）
 
+# === Task 2: Network section 网络章节排版 ===
+
+# 先生成报告（一次生成，多次断言）
+# 注意：pandoc 可能未安装，此时 report.sh 会 exit 1 但 .report_temp.md 仍生成
+REPORT_OUT=$(bash report.sh -i output/ -o report/.test_report.docx 2>&1 | tail -3) || true
+LATEST_MD=$(ls -t report/巡检报告_*.md 2>/dev/null | head -1 || true)
+# 无 pandoc 时回退到临时 markdown 文件
+[[ -z "${LATEST_MD}" ]] && LATEST_MD="report/.report_temp.md"
+
+if [[ -z "${LATEST_MD}" ]]; then
+    fail "Task 2: 报告未生成"
+else
+    # 网卡表表头（融合）
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| 网卡 \| 状态 \| 速率 \|' "网卡表头含 主机+IP+网卡+状态+速率"
+
+    # TCP 表表头
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| ESTABLISHED' "TCP 表头含 主机+IP+ESTABLISHED"
+
+    # 网络附属表头
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| DNS 解析 \| 防火墙 \| 默认路由 \|' "网络附属表头"
+
+    # 虚拟网卡应被过滤
+    assert_not_contains "${LATEST_MD}" "| veth" "网卡表不应包含 veth 虚拟网卡"
+    assert_not_contains "${LATEST_MD}" "| docker0" "网卡表不应包含 docker0"
+    assert_not_contains "${LATEST_MD}" "| flannel.1" "网卡表不应包含 flannel.1"
+
+    # 网卡表应包含物理网卡
+    assert_match "${LATEST_MD}" '\| eth0 \|' "网卡表包含 eth0 物理网卡"
+fi
+
 echo ""
 echo "================================"
 echo "总计: ${TOTAL}  通过: ${PASSED}  失败: ${FAILED}"

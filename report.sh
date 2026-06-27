@@ -695,92 +695,113 @@ generate_network_section() {
 
 ## 3.2 网络状态
 
+### 3.2.1 网卡状态
+
+| 主机 | IP | 网卡 | 状态 | 速率 |
+|------|----|------|------|------|
+EOF
+
+    # 网卡表（过滤虚拟网卡）
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+        local nic_val
+        nic_val=$(get_val "$i" "NET_NIC_")
+        [ -z "${nic_val}" ] && continue
+
+        IFS='|' read -ra parts <<< "${nic_val}"
+        for part in "${parts[@]}"; do
+            [ -z "${part}" ] && continue
+            local nic_name nic_status nic_speed
+            nic_name=$(echo "${part}" | cut -d: -f1)
+            nic_status=$(echo "${part}" | cut -d: -f2)
+            nic_speed=$(echo "${part}" | cut -d: -f3)
+
+            # 跳过虚拟网卡
+            is_virtual_nic "${nic_name}" && continue
+
+            printf "| %s | %s | %s | %s | %s |\n" \
+                "${hostname}" "${ip}" "${nic_name}" "${nic_status}" "${nic_speed}" >> "${MD_FILE}"
+        done
+    done
+
+    # TCP 连接表
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.2.2 TCP 连接状态
+
+| 主机 | IP | ESTABLISHED | TIME_WAIT | CLOSE_WAIT | SYN_RECV |
+|------|----|-------------|-----------|------------|----------|
 EOF
 
     for i in "${!SERVER_HOSTNAMES[@]}"; do
         local hostname="${SERVER_HOSTNAMES[$i]}"
-        echo "### ${hostname}" >> "${MD_FILE}"
-        echo "" >> "${MD_FILE}"
-
-        # NIC status
-        local nic_val
-        nic_val=$(get_val "$i" "NET_NIC_")
-        if [ -n "${nic_val}" ]; then
-            echo "**网卡状态：**" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-            echo "| 网卡 | 状态 | 速率 |" >> "${MD_FILE}"
-            echo "|------|------|------|" >> "${MD_FILE}"
-            IFS='|' read -ra parts <<< "${nic_val}"
-            for part in "${parts[@]}"; do
-                [ -z "${part}" ] && continue
-                local nic_name nic_status nic_speed
-                nic_name=$(echo "${part}" | cut -d: -f1)
-                nic_status=$(echo "${part}" | cut -d: -f2)
-                nic_speed=$(echo "${part}" | cut -d: -f3)
-                printf "| %s | %s | %s |\n" "${nic_name}" "${nic_status}" "${nic_speed}" >> "${MD_FILE}"
-            done
-            echo "" >> "${MD_FILE}"
-        fi
-
-        # TCP status
+        local ip="${SERVER_IPS[$i]:-N/A}"
         local tcp_val
         tcp_val=$(get_val "$i" "NET_TCP_STATUS")
-        if [ -n "${tcp_val}" ]; then
-            echo "**TCP 连接状态：**" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-            echo "| 状态 | 连接数 |" >> "${MD_FILE}"
-            echo "|------|--------|" >> "${MD_FILE}"
-            IFS='|' read -ra parts <<< "${tcp_val}"
-            for part in "${parts[@]}"; do
-                [ -z "${part}" ] && continue
-                local state count
-                state=$(echo "${part}" | cut -d: -f1)
-                count=$(echo "${part}" | cut -d: -f2)
-                printf "| %s | %s |\n" "${state}" "${count}" >> "${MD_FILE}"
+        [ -z "${tcp_val}" ] && continue
 
-                # Check CLOSE_WAIT and TIME_WAIT thresholds
-                if [ "${state}" = "CLOSE_WAIT" ]; then
-                    local s
-                    s=$(check_threshold "CLOSE_WAIT" "${count}")
-                    [ "${s}" != "OK" ] && add_issue "${s}" "TCP CLOSE_WAIT 连接数 ${count} (${s})" "${hostname}"
-                elif [ "${state}" = "TIME_WAIT" ]; then
-                    local s
-                    s=$(check_threshold "TIME_WAIT" "${count}")
-                    [ "${s}" != "OK" ] && add_issue "${s}" "TCP TIME_WAIT 连接数 ${count} (${s})" "${hostname}"
-                fi
-            done
-            echo "" >> "${MD_FILE}"
-        fi
+        # 把 "ESTABLISHED:2|TIME_WAIT:0|..." 解析为关联
+        declare -A tcp_map=()
+        IFS='|' read -ra parts <<< "${tcp_val}"
+        for part in "${parts[@]}"; do
+            [ -z "${part}" ] && continue
+            local k v
+            k=$(echo "${part}" | cut -d: -f1)
+            v=$(echo "${part}" | cut -d: -f2)
+            tcp_map["${k}"]="${v}"
 
-        # Listen ports
+            # 阈值检查（保留原行为）
+            if [ "${k}" = "CLOSE_WAIT" ] || [ "${k}" = "TIME_WAIT" ]; then
+                local s
+                s=$(check_threshold "${k}" "${v}")
+                [ "${s}" != "OK" ] && add_issue "${s}" "TCP ${k} 连接数 ${v} (${s})" "${hostname}"
+            fi
+        done
+
+        printf "| %s | %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" \
+            "${tcp_map[ESTABLISHED]:-0}" \
+            "${tcp_map[TIME_WAIT]:-0}" \
+            "${tcp_map[CLOSE_WAIT]:-0}" \
+            "${tcp_map[SYN_RECV]:-0}" >> "${MD_FILE}"
+        unset tcp_map
+    done
+
+    # 监听端口（每台一段紧凑列表）
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.2.3 监听端口
+
+EOF
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
         local ports_val
         ports_val=$(get_val "$i" "NET_LISTEN_PORTS")
-        if [ -n "${ports_val}" ]; then
-            echo "**监听端口：** ${ports_val}" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-        fi
+        [ -z "${ports_val}" ] && ports_val="N/A"
+        printf "**%s (%s)** 监听端口：\n\n%s\n\n" \
+            "${hostname}" "${ip}" "${ports_val}" >> "${MD_FILE}"
+    done
 
-        # DNS
-        local dns_val
-        dns_val=$(get_val "$i" "NET_DNS_RESOLVE")
-        if [ -n "${dns_val}" ]; then
-            echo "**DNS 解析：** ${dns_val}" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-        fi
+    # 网络附属
+    cat >> "${MD_FILE}" <<EOF
 
-        # Firewall
-        local fw_val
-        fw_val=$(get_val "$i" "NET_FIREWALL")
-        echo "**防火墙状态：** ${fw_val:-N/A}" >> "${MD_FILE}"
-        echo "" >> "${MD_FILE}"
+### 3.2.4 网络附属
 
-        # Route
-        local route_val
-        route_val=$(get_val "$i" "NET_ROUTE")
-        if [ -n "${route_val}" ]; then
-            echo "**默认路由：** ${route_val}" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-        fi
+| 主机 | IP | DNS 解析 | 防火墙 | 默认路由 |
+|------|----|----------|--------|----------|
+EOF
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+        printf "| %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" \
+            "$(get_val "$i" "NET_DNS_RESOLVE")" \
+            "$(get_val "$i" "NET_FIREWALL")" \
+            "$(get_val "$i" "NET_ROUTE")" >> "${MD_FILE}"
     done
 }
 

@@ -84,6 +84,24 @@ else
     assert_match "${LATEST_MD}" '\| eth0 \|' "网卡表包含 eth0 物理网卡"
 fi
 
+# === Task 3: Process & Java section 进程与 Java 章节 ===
+
+if [[ -z "${LATEST_MD}" ]]; then
+    fail "Task 3: 报告未生成"
+else
+    # 进程统计表头
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| 总计 \| 运行 \| 休眠 \| 僵尸 \|' "进程统计表头"
+
+    # CPU Top5 子节
+    assert_match "${LATEST_MD}" 'CPU Top5' "CPU Top5 子节存在"
+
+    # 服务状态子节
+    assert_match "${LATEST_MD}" '服务状态' "服务状态子节存在"
+
+    # Java 进程详情表头（折叠命令行）
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| PID \| 进程名 \| Xmx \| GC Old% \| OOM \| 日志路径 \|' "Java 详情表头"
+fi
+
 echo ""
 echo "================================"
 echo "总计: ${TOTAL}  通过: ${PASSED}  失败: ${FAILED}"

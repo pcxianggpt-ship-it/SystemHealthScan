@@ -817,106 +817,155 @@ generate_process_section() {
 
 ## 3.3 进程与 Java 应用
 
+### 3.3.1 进程统计
+
+| 主机 | IP | 总计 | 运行 | 休眠 | 僵尸 |
+|------|----|----|------|------|------|
 EOF
 
-    # Process overview per server
     for i in "${!SERVER_HOSTNAMES[@]}"; do
         local hostname="${SERVER_HOSTNAMES[$i]}"
-        echo "### ${hostname}" >> "${MD_FILE}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+        local total running sleeping zombie
+        total=$(get_val "$i" "PROCESS_TOTAL")
+        running=$(get_val "$i" "PROCESS_RUNNING")
+        sleeping=$(get_val "$i" "PROCESS_SLEEPING")
+        zombie=$(get_val "$i" "PROCESS_ZOMBIE")
+        [[ -z "${total}" ]] && total="N/A"
+        [[ -z "${running}" ]] && running="N/A"
+        [[ -z "${sleeping}" ]] && sleeping="N/A"
+        [[ -z "${zombie}" ]] && zombie="N/A"
+        printf "| %s | %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" "${total}" "${running}" "${sleeping}" "${zombie}" >> "${MD_FILE}"
+
+        # 僵尸进程阈值检查（保留原行为）
+        if [[ "${zombie}" =~ ^[0-9]+$ ]] && [[ "${zombie}" -gt 0 ]]; then
+            local s
+            s=$(check_threshold "ZOMBIE_COUNT" "${zombie}")
+            [ "${s}" != "OK" ] && add_issue "${s}" "僵尸进程数 ${zombie}" "${hostname}"
+        fi
+    done
+
+    # CPU Top5 + 内存 Top5：每台一段
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.3.2 CPU 与内存 Top5
+
+EOF
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
+
+        printf "**%s (%s) CPU Top5：**\n\n" "${hostname}" "${ip}" >> "${MD_FILE}"
+        echo "| PID | 进程名 | CPU% |" >> "${MD_FILE}"
+        echo "|-----|--------|------|" >> "${MD_FILE}"
+        local cpu_top5
+        cpu_top5=$(get_val "$i" "CPU_TOP5")
+        if [[ -n "${cpu_top5}" ]]; then
+            IFS='|' read -ra parts <<< "${cpu_top5}"
+            for part in "${parts[@]}"; do
+                [[ -z "${part}" ]] && continue
+                echo "${part}" | awk -F: '{printf "| %s | %s | %s |\n", $2, $3, $4}' >> "${MD_FILE}"
+            done
+        fi
         echo "" >> "${MD_FILE}"
 
-        # Service status
+        printf "**%s (%s) 内存 Top5：**\n\n" "${hostname}" "${ip}" >> "${MD_FILE}"
+        echo "| PID | 进程名 | 内存 |" >> "${MD_FILE}"
+        echo "|-----|--------|------|" >> "${MD_FILE}"
+        local mem_top5
+        mem_top5=$(get_val "$i" "PROCESS_TOP5_MEM")
+        if [[ -n "${mem_top5}" ]]; then
+            IFS='|' read -ra parts <<< "${mem_top5}"
+            for part in "${parts[@]}"; do
+                [[ -z "${part}" ]] && continue
+                echo "${part}" | awk -F: '{printf "| %s | %s | %s |\n", $2, $3, $4}' >> "${MD_FILE}"
+            done
+        fi
+        echo "" >> "${MD_FILE}"
+    done
+
+    # 服务状态：每台一段
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.3.3 服务状态
+
+EOF
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
         local svc_val
         svc_val=$(get_val "$i" "SERVICE_STATUS")
-        if [ -n "${svc_val}" ]; then
-            echo "**服务状态：** ${svc_val}" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-        fi
+        [[ -z "${svc_val}" ]] && continue
 
-        # Process counts
-        local proc_total proc_zombie proc_running proc_sleeping
-        proc_total=$(get_val "$i" "PROCESS_TOTAL")
-        proc_zombie=$(get_val "$i" "PROCESS_ZOMBIE")
-        proc_running=$(get_val "$i" "PROCESS_RUNNING")
-        proc_sleeping=$(get_val "$i" "PROCESS_SLEEPING")
-
-        echo "**进程统计：** 总计 ${proc_total:-N/A}，运行 ${proc_running:-N/A}，休眠 ${proc_sleeping:-N/A}，僵尸 ${proc_zombie:-N/A}" >> "${MD_FILE}"
+        printf "**%s (%s) 服务状态：**\n\n" "${hostname}" "${ip}" >> "${MD_FILE}"
+        echo "| 服务 | 状态 |" >> "${MD_FILE}"
+        echo "|------|------|" >> "${MD_FILE}"
+        IFS='|' read -ra parts <<< "${svc_val}"
+        for part in "${parts[@]}"; do
+            [[ -z "${part}" ]] && continue
+            local svc state
+            svc=$(echo "${part}" | cut -d: -f1)
+            state=$(echo "${part}" | cut -d: -f2)
+            printf "| %s | %s |\n" "${svc}" "${state}" >> "${MD_FILE}"
+        done
         echo "" >> "${MD_FILE}"
+    done
 
-        # Check zombie threshold
-        local zombie_status
-        zombie_status=$(check_threshold "ZOMBIE_COUNT" "${proc_zombie}")
-        [ "${zombie_status}" != "OK" ] && add_issue "${zombie_status}" "Zombie 进程数 ${proc_zombie} (${zombie_status})" "${hostname}"
+    # Java 进程详情（折叠命令行）
+    cat >> "${MD_FILE}" <<EOF
 
-        # CPU Top5
-        local top5_cpu
-        top5_cpu=$(get_val "$i" "PROCESS_TOP5_CPU")
-        if [ -n "${top5_cpu}" ]; then
-            echo "**CPU Top5 进程：**" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-            echo "| PID | 进程名 | CPU% |" >> "${MD_FILE}"
-            echo "|-----|--------|------|" >> "${MD_FILE}"
-            IFS='|' read -ra parts <<< "${top5_cpu}"
-            for part in "${parts[@]}"; do
-                [ -z "${part}" ] && continue
-                local pid name cpu
-                pid=$(echo "${part}" | cut -d: -f2)
-                name=$(echo "${part}" | cut -d: -f3)
-                cpu=$(echo "${part}" | cut -d: -f4)
-                printf "| %s | %s | %s |\n" "${pid}" "${name}" "${cpu}" >> "${MD_FILE}"
-            done
-            echo "" >> "${MD_FILE}"
-        fi
+### 3.3.4 Java 进程详情
 
-        # MEM Top5
-        local top5_mem
-        top5_mem=$(get_val "$i" "PROCESS_TOP5_MEM")
-        if [ -n "${top5_mem}" ]; then
-            echo "**内存 Top5 进程：**" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-            echo "| PID | 进程名 | 内存 |" >> "${MD_FILE}"
-            echo "|-----|--------|------|" >> "${MD_FILE}"
-            IFS='|' read -ra parts <<< "${top5_mem}"
-            for part in "${parts[@]}"; do
-                [ -z "${part}" ] && continue
-                local pid name mem
-                pid=$(echo "${part}" | cut -d: -f2)
-                name=$(echo "${part}" | cut -d: -f3)
-                mem=$(echo "${part}" | cut -d: -f4)
-                printf "| %s | %s | %s |\n" "${pid}" "${name}" "${mem}" >> "${MD_FILE}"
-            done
-            echo "" >> "${MD_FILE}"
-        fi
+| 主机 | IP | PID | 进程名 | Xmx | GC Old% | OOM | 日志路径 |
+|------|----|-----|--------|-----|---------|-----|----------|
+EOF
 
-        # Java processes
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local ip="${SERVER_IPS[$i]:-N/A}"
         local java_count
         java_count=$(get_val "$i" "PROCESS_JAVA_COUNT")
-        if [ -n "${java_count}" ] && [ "${java_count}" != "0" ]; then
-            echo "**Java 进程（${java_count} 个）：**" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
+        [[ -z "${java_count}" ]] && continue
+        [[ "${java_count}" -eq 0 ]] && continue
 
-            local j
-            for j in $(seq 1 "${java_count}"); do
-                local java_cmd java_jvm_args java_gc java_oom java_log
-                java_cmd=$(get_val "$i" "JAVA_CMD_${j}")
-                java_jvm_args=$(get_val "$i" "JAVA_JVM_XMS_XMX_${j}")
-                java_gc=$(get_val "$i" "JAVA_JVM_GC_DETAIL_${j}")
-                java_oom=$(get_val "$i" "JAVA_JVM_OOM_DUMP_${j}")
-                java_log=$(get_val "$i" "JAVA_LOG_COLLECT_${j}")
+        local idx=1
+        while [[ ${idx} -le ${java_count} ]]; do
+            local ps_field pid cmdline short_name xmx gc_old oom log_path
 
-                echo "#### Java 进程 ${j}" >> "${MD_FILE}"
-                echo "" >> "${MD_FILE}"
-                echo "- **命令行：** \`${java_cmd:-N/A}\`" >> "${MD_FILE}"
-                echo "- **JVM 参数：** \`${java_jvm_args:-N/A}\`" >> "${MD_FILE}"
-                echo "- **GC 统计：** ${java_gc:-N/A}" >> "${MD_FILE}"
-                echo "- **OOM Dump：** ${java_oom:-N/A}" >> "${MD_FILE}"
-                echo "- **日志路径：** ${java_log:-N/A}" >> "${MD_FILE}"
-                echo "" >> "${MD_FILE}"
-            done
-        else
-            echo "**Java 进程：** 无" >> "${MD_FILE}"
-            echo "" >> "${MD_FILE}"
-        fi
+            # JAVA_PS_<idx> 是复合字段：USER:user|PID:12345|START:...|...
+            ps_field=$(get_val "$i" "JAVA_PS_${idx}")
+            pid=$(echo "${ps_field}" | grep -oE 'PID:[^|]+' | cut -d: -f2)
+
+            cmdline=$(get_val "$i" "JAVA_CMD_${idx}")
+            short_name=$(extract_short_process_name "${cmdline}")
+
+            # JAVA_JVM_XMS_XMX_<idx>: Xms:default:Xmx:1g
+            local jvm_field
+            jvm_field=$(get_val "$i" "JAVA_JVM_XMS_XMX_${idx}")
+            xmx=$(echo "${jvm_field}" | grep -oE 'Xmx:[^:|]+' | cut -d: -f2)
+            [[ -z "${xmx}" ]] && xmx="default"
+
+            # JAVA_JVM_GC_DETAIL_<idx>: OldGen:61.36%|Eden:..%|Survivor:..%
+            local gc_field
+            gc_field=$(get_val "$i" "JAVA_JVM_GC_DETAIL_${idx}")
+            gc_old=$(echo "${gc_field}" | grep -oE 'OldGen:[0-9.]+%' | head -1 | cut -d: -f2)
+            [[ -z "${gc_old}" ]] && gc_old="N/A"
+
+            oom=$(get_val "$i" "JAVA_JVM_OOM_DUMP_${idx}")
+            [[ -z "${oom}" ]] && oom="NONE"
+
+            log_path=$(get_val "$i" "JAVA_LOG_COLLECT_${idx}")
+            [[ -z "${log_path}" ]] && log_path="SOURCE:NOT_FOUND"
+
+            printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" \
+                "${hostname}" "${ip}" "${pid}" "${short_name}" \
+                "${xmx}" "${gc_old}" "${oom}" "${log_path}" >> "${MD_FILE}"
+
+            idx=$((idx + 1))
+        done
     done
 }
 

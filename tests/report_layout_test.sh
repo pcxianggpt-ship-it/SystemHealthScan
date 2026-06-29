@@ -134,6 +134,8 @@ if [[ -z "${LATEST_MD}" ]]; then
     fail "Task 7: 报告未生成"
 else
     assert_match "${LATEST_MD}" '\| 主机 \| IP \| 用户 \| 来源 \| 调度 \| 命令 \|' "Crontab 表头"
+    # T9：cmd 含 || 不应被错误切分（应保留在同一行）
+    assert_match "${LATEST_MD}" 'test -x /usr/sbin/anacron \|\|' "Crontab cmd 含 || 保留完整"
 fi
 
 # === Task 8: Log & Alert 章节 ===

@@ -158,6 +158,17 @@ load_all_dat() {
 
     for dat_file in "${INPUT_DIR}"/*.dat; do
         [ -f "${dat_file}" ] || continue
+
+        # T9：跳过缺 HOSTNAME/IP 或 IP 占位值的不完整 .dat（避免污染报告）
+        local _hostname_val="" _ip_val=""
+        _hostname_val=$(grep -E "^HOSTNAME=" "${dat_file}" 2>/dev/null | head -1 | cut -d= -f2 || true)
+        _ip_val=$(grep -E "^IP=" "${dat_file}" 2>/dev/null | head -1 | cut -d= -f2 || true)
+        if [[ -z "${_hostname_val}" || -z "${_ip_val}" \
+              || "${_ip_val}" == "unknown" || "${_ip_val}" == "N/A" ]]; then
+            log_info "Skipping incomplete (HOSTNAME/IP missing or placeholder): ${dat_file}"
+            continue
+        fi
+
         log_info "Loading: ${dat_file}"
 
         local idx="${dat_count}"
@@ -1158,9 +1169,23 @@ EOF
         [[ -z "${cron_val}" || "${cron_val}" == "NONE" ]] && continue
 
         # 格式：user:source:schedule:cmd|...
-        # cmd 可能含 ":"，用 awk 重构第 4 段以后的内容
-        IFS='|' read -ra parts <<< "${cron_val}"
-        for part in "${parts[@]}"; do
+        # cmd 可能含 ":" 和 "|"（如 "test -x ... || { ... }"），简单 IFS='|' 会错切
+        # 用 awk 检测条目边界：新条目以 "user:source:schedule:" 模式开头
+        local entries
+        entries=$(echo "${cron_val}" | awk -v RS='|' '
+            BEGIN { entry = "" }
+            {
+                if ($0 ~ /^[a-zA-Z_][a-zA-Z0-9_-]*:[^:|]+:[*0-9 /,-]+:/) {
+                    if (entry != "") print entry
+                    entry = $0
+                } else {
+                    entry = entry "|" $0
+                }
+            }
+            END { if (entry != "") print entry }
+        ')
+
+        while IFS= read -r part; do
             [[ -z "${part}" ]] && continue
             local user="" source="" schedule="" cmd=""
             user=$(echo "${part}"     | awk -F: '{print $1}')
@@ -1173,7 +1198,7 @@ EOF
             [[ -z "${cmd}" ]]      && cmd="N/A"
             printf "| %s | %s | %s | %s | %s | %s |\n" \
                 "${hostname}" "${ip}" "${user}" "${source}" "${schedule}" "${cmd}" >> "${MD_FILE}"
-        done
+        done <<< "${entries}"
     done
 
     # Anacron 单独段落（仅有数据时输出）

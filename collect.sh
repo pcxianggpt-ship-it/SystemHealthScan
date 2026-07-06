@@ -35,6 +35,26 @@ print_notice() {
     print_kv "NOTICE_${key}" "${message}"
 }
 
+find_cmd() {
+    local cmd="$1"
+    shift
+
+    if command -v "${cmd}" >/dev/null 2>&1; then
+        command -v "${cmd}"
+        return 0
+    fi
+
+    local path
+    for path in "$@"; do
+        if [ -x "${path}" ]; then
+            echo "${path}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Show version information
 show_version() {
     echo "SystemHealthScan Core Collection Script v${VERSION}"
@@ -412,9 +432,12 @@ collect_network_status() {
 
     # Listening ports
     local listen_ports=""
-    if command -v ss >/dev/null 2>&1; then
+    local ss_cmd="" netstat_cmd=""
+    ss_cmd=$(find_cmd ss /usr/sbin/ss /sbin/ss /usr/bin/ss /bin/ss || true)
+    netstat_cmd=$(find_cmd netstat /usr/sbin/netstat /sbin/netstat /usr/bin/netstat /bin/netstat || true)
+    if [ -n "${ss_cmd}" ]; then
         # Extract port from local address column ($4) and process name
-        listen_ports=$(ss -tlnp 2>/dev/null | grep LISTEN | awk '{
+        listen_ports=$( (sudo -n "${ss_cmd}" -tlnp 2>/dev/null || "${ss_cmd}" -tlnp 2>/dev/null) | grep LISTEN | awk '{
             # Local address is $4, format: IP:PORT or IP%iface:PORT
             local_addr=$4;
             port=local_addr;
@@ -431,10 +454,15 @@ collect_network_status() {
             }
             printf "%s(%s)|", port, proc
         }' 2>/dev/null | sed 's/|$//' || true)
-    elif command -v netstat >/dev/null 2>&1; then
-        listen_ports=$(netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
+    elif [ -n "${netstat_cmd}" ]; then
+        listen_ports=$( (sudo -n "${netstat_cmd}" -tlnp 2>/dev/null || "${netstat_cmd}" -tlnp 2>/dev/null) | grep LISTEN | awk '{
             port=$4; sub(/.*:/, "", port);
-            printf "%s|", port
+            proc="unknown";
+            if ($7 != "" && $7 != "-") {
+                proc=$7;
+                sub(/^[0-9]+\//, "", proc);
+            }
+            printf "%s(%s)|", port, proc
         }' | sed 's/|$//' || true)
     else
         print_notice "NET_LISTEN_PORTS" "Unable to collect listening ports: ss and netstat commands not found"
@@ -605,13 +633,16 @@ collect_java_processes() {
 
     local java_count=0
     if [ -n "${java_pids}" ]; then
-        java_count=$(printf '%s\n' "${java_pids}" | wc -l | tr -d ' ')
+        java_count=$(printf '%s\n' "${java_pids}" | grep -c '^[0-9][0-9]*$' || true)
     fi
     print_kv "PROCESS_JAVA_COUNT" "${java_count}"
 
     local idx=0
-    # shellcheck disable=SC2086 - intentional word splitting: PIDs are numeric, safe
+    # shellcheck disable=SC2086 - intentional word splitting: pgrep outputs numeric PIDs
     for pid in ${java_pids}; do
+        case "${pid}" in
+            ''|*[!0-9]*) continue ;;
+        esac
         idx=$((idx + 1))
 
         # Skip if process disappeared

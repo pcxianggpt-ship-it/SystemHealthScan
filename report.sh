@@ -956,7 +956,7 @@ EOF
 
             # JAVA_PS_<idx> 是复合字段：USER:user|PID:12345|START:...|...
             ps_field=$(get_val "$i" "JAVA_PS_${idx}")
-            pid=$(echo "${ps_field}" | grep -oE 'PID:[^|]+' | cut -d: -f2)
+            pid=$(echo "${ps_field}" | grep -oE 'PID:[^|]+' | cut -d: -f2 || true)
             [[ -z "${pid}" ]] && pid="N/A"
 
             cmdline=$(get_val "$i" "JAVA_CMD_${idx}")
@@ -965,13 +965,15 @@ EOF
             # JAVA_JVM_XMS_XMX_<idx>: Xms:default:Xmx:1g
             local jvm_field
             jvm_field=$(get_val "$i" "JAVA_JVM_XMS_XMX_${idx}")
-            xmx=$(echo "${jvm_field}" | grep -oE 'Xmx:[^:|]+' | cut -d: -f2)
+            xmx=$(echo "${jvm_field}" | grep -oE 'Xmx:[^:|]+' | cut -d: -f2 || true)
             [[ -z "${xmx}" ]] && xmx="default"
 
             # JAVA_JVM_GC_DETAIL_<idx>: OldGen:61.36%|Eden:..%|Survivor:..%
+            # 注意：该字段可能为 N/A（采集端无 jstat 时），grep 不匹配会返回非零，
+            # 在 set -euo pipefail 下会终止脚本，必须追加 || true
             local gc_field
             gc_field=$(get_val "$i" "JAVA_JVM_GC_DETAIL_${idx}")
-            gc_old=$(echo "${gc_field}" | grep -oE 'OldGen:[0-9.]+%' | head -1 | cut -d: -f2)
+            gc_old=$(echo "${gc_field}" | grep -oE 'OldGen:[0-9.]+%' | head -1 | cut -d: -f2 || true)
             [[ -z "${gc_old}" ]] && gc_old="N/A"
 
             oom=$(get_val "$i" "JAVA_JVM_OOM_DUMP_${idx}")
@@ -1330,7 +1332,7 @@ EOF
         while [[ ${idx} -le ${java_count} ]]; do
             local ps_field pid cmdline
             ps_field=$(get_val "$i" "JAVA_PS_${idx}")
-            pid=$(echo "${ps_field}" | grep -oE 'PID:[^|]+' | cut -d: -f2)
+            pid=$(echo "${ps_field}" | grep -oE 'PID:[^|]+' | cut -d: -f2 || true)
             [[ -z "${pid}" ]] && pid="N/A"
             cmdline=$(get_val "$i" "JAVA_CMD_${idx}")
             [[ -z "${cmdline}" ]] && cmdline="(unknown)"

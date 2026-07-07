@@ -221,10 +221,10 @@ java -XX:MaxHeapSize=256M -Drocketmq.namesrv.addr=... -jar /rocketmq-dashboard.j
 **6.5.2 内核关键参数**
 
 ```
-| 主机 | IP | somaxconn | swappiness | file-max | tcp_syn_backlog |
+| 主机 | IP | 连接队列(somaxconn) | Swap 倾向(swappiness) | 系统文件句柄(file-max) | 打开文件数(ulimit -n) | SYN 队列(tcp_syn_backlog) |
 ```
 
-字段：`SYSCTL_KEY_PARAMS`，原格式 `key=value|key=value|...`。
+字段：`SYSCTL_KEY_PARAMS`，原格式 `key=value|key=value|...`；`打开文件数(ulimit -n)` 来自 `ULIMIT_NOFILE`。
 
 **6.5.3 安全综合状态**
 

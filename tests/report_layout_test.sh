@@ -124,7 +124,7 @@ if [[ -z "${LATEST_MD}" ]]; then
     fail "Task 6: 报告未生成"
 else
     assert_match "${LATEST_MD}" '\| 主机 \| IP \| 端口 \| Root 登录 \| 密码认证 \| 空密码 \| MaxAuth \|' "SSH 配置表头"
-    assert_match "${LATEST_MD}" '\| 主机 \| IP \| somaxconn \| swappiness \| file-max \| tcp_syn_backlog \|' "内核参数表头"
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| 连接队列\(somaxconn\) \| Swap 倾向\(swappiness\) \| 系统文件句柄\(file-max\) \| 打开文件数\(ulimit -n\) \| SYN 队列\(tcp_syn_backlog\) \|' "内核参数中文表头含 ulimit -n"
     assert_match "${LATEST_MD}" '\| 主机 \| IP \| SELinux \| Fail2ban \| NTP 同步 \| 锁定用户 \| Sudo 今日 \|' "安全综合表头"
 fi
 

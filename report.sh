@@ -1089,15 +1089,16 @@ EOF
 
 ### 3.5.2 内核关键参数
 
-| 主机 | IP | somaxconn | swappiness | file-max | tcp_syn_backlog |
-|------|----|-----------|------------|----------|-----------------|
+| 主机 | IP | 连接队列(somaxconn) | Swap 倾向(swappiness) | 系统文件句柄(file-max) | 打开文件数(ulimit -n) | SYN 队列(tcp_syn_backlog) |
+|------|----|---------------------|-----------------------|------------------------|------------------------|--------------------------|
 EOF
 
     for i in "${!SERVER_HOSTNAMES[@]}"; do
         local hostname="${SERVER_HOSTNAMES[$i]}"
         local ip="${SERVER_IPS[$i]:-N/A}"
-        local sysctl_val
+        local sysctl_val ulimit_nofile
         sysctl_val=$(get_val "$i" "SYSCTL_KEY_PARAMS")
+        ulimit_nofile=$(get_val "$i" "ULIMIT_NOFILE")
         # 格式：key=value|key=value|...
         local somaxconn="" swappiness="" file_max="" tcp_syn=""
         somaxconn=$(echo "${sysctl_val}"  | grep -oE 'net\.core\.somaxconn=[^|]+'         | cut -d= -f2 || true)
@@ -1107,9 +1108,10 @@ EOF
         [[ -z "${somaxconn}" ]]  && somaxconn="N/A"
         [[ -z "${swappiness}" ]] && swappiness="N/A"
         [[ -z "${file_max}" ]]   && file_max="N/A"
+        [[ -z "${ulimit_nofile}" ]] && ulimit_nofile="N/A"
         [[ -z "${tcp_syn}" ]]    && tcp_syn="N/A"
-        printf "| %s | %s | %s | %s | %s | %s |\n" \
-            "${hostname}" "${ip}" "${somaxconn}" "${swappiness}" "${file_max}" "${tcp_syn}" >> "${MD_FILE}"
+        printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
+            "${hostname}" "${ip}" "${somaxconn}" "${swappiness}" "${file_max}" "${ulimit_nofile}" "${tcp_syn}" >> "${MD_FILE}"
     done
 
     # 安全综合状态

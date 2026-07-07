@@ -1050,6 +1050,11 @@ collect_security() {
     sysctl_params=$(echo "${sysctl_params}" | sed 's/|$//')
     print_kv "SYSCTL_KEY_PARAMS" "${sysctl_params}"
 
+    # Current shell/process open file descriptor limit.
+    local ulimit_nofile="N/A"
+    ulimit_nofile=$(ulimit -n 2>/dev/null || echo "N/A")
+    print_kv "ULIMIT_NOFILE" "${ulimit_nofile}"
+
     # NTP sync
     local ntp_sync="N/A"
     if command -v timedatectl >/dev/null 2>&1; then

@@ -200,6 +200,7 @@ FAIL2BAN_STATUS=RUNNING|BANNED:12
 
 # 系统配置
 SYSCTL_KEY_PARAMS=net.core.somaxconn=65535|vm.swappiness=10|fs.file-max=100000
+ULIMIT_NOFILE=1024
 NTP_SYNC=OK|SERVER:ntp.aliyun.com|OFFSET:0.5ms
 ```
 

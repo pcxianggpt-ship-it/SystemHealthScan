@@ -4,6 +4,17 @@
 # 读取 collect.sh 输出的 .dat 键值对文件，生成 Markdown 并转为 Word 报告
 # =============================================================================
 
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "[ERROR] report.sh requires bash. Please run: bash report.sh" >&2
+    exit 2
+fi
+
+# Some environments have /bin/sh -> bash. Running `sh report.sh` then enables
+# bash POSIX mode and changes `set -e` behavior enough to stop report assembly.
+if shopt -oq posix; then
+    set +o posix
+fi
+
 set -euo pipefail
 
 # Script version
@@ -352,7 +363,7 @@ extract_short_process_name() {
 
     # 1. 优先取 -jar <path> 的 basename
     local jar
-    jar=$(echo "${cmdline}" | grep -oE -- '-jar[[:space:]]+[^[:space:]]+\.jar' | head -1 | sed 's/.*-jar[[:space:]]*//')
+    jar=$(echo "${cmdline}" | grep -oE -- '-jar[[:space:]]+[^[:space:]]+\.jar' | head -1 | sed 's/.*-jar[[:space:]]*//' || true)
     if [[ -n "${jar}" ]]; then
         result=$(basename "${jar}")
     fi
@@ -366,7 +377,7 @@ extract_short_process_name() {
     #    避免 -c broker.conf 这类参数值被误选为主类
     if [[ -z "${result}" ]]; then
         local main_class
-        main_class=$(echo "${cmdline}" | tr ' ' '\n' | grep -vE '^-' | awk -F'.' 'NF>=3' | tail -1)
+        main_class=$(echo "${cmdline}" | tr ' ' '\n' | grep -vE '^-' | awk -F'.' 'NF>=3' | tail -1 || true)
         if [[ -n "${main_class}" ]]; then
             result=$(echo "${main_class}" | awk -F'.' '{print $NF}')
         fi

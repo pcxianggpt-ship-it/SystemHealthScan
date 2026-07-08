@@ -723,7 +723,10 @@ EOF
         local status
         status=$(check_threshold "CPU_USAGE" "${cpu_usage}")
 
-        [ "${status}" != "OK" ] && add_issue "${status}" "CPU 使用率 ${cpu_usage}% (${status})" "${hostname}"
+        if [ "${status}" != "OK" ]; then
+            add_issue "${status}" "CPU 使用率 ${cpu_usage}% (${status})" "${hostname}"
+            add_section_finding "3.1" "${status}" "${hostname} 的 CPU 使用率为 ${cpu_usage}%"
+        fi
 
         local status_text
         case "${status}" in
@@ -754,7 +757,10 @@ EOF
         local status
         status=$(check_threshold "MEM_PERCENT" "${mem_percent}")
 
-        [ "${status}" != "OK" ] && add_issue "${status}" "内存使用率 ${mem_percent}% (${status})" "${hostname}"
+        if [ "${status}" != "OK" ]; then
+            add_issue "${status}" "内存使用率 ${mem_percent}% (${status})" "${hostname}"
+            add_section_finding "3.1" "${status}" "${hostname} 的内存使用率为 ${mem_percent}%"
+        fi
 
         local status_text
         case "${status}" in
@@ -779,7 +785,10 @@ EOF
             swap_percent=$(awk "BEGIN { printf \"%.1f\", ${swap_used:-0} / ${swap_total} * 100 }" 2>/dev/null || echo "0")
             local status
             status=$(check_threshold "SWAP_PERCENT" "${swap_percent}")
-            [ "${status}" != "OK" ] && add_issue "${status}" "SWAP 使用率 ${swap_percent}% (${status})" "${hostname}"
+            if [ "${status}" != "OK" ]; then
+                add_issue "${status}" "SWAP 使用率 ${swap_percent}% (${status})" "${hostname}"
+                add_section_finding "3.1" "${status}" "${hostname} 的 SWAP 使用率为 ${swap_percent}%"
+            fi
         fi
     done
 
@@ -810,7 +819,10 @@ EOF
             local status
             status=$(check_threshold "DISK_PERCENT" "${percent}")
 
-            [ "${status}" != "OK" ] && add_issue "${status}" "磁盘 ${mount} 使用率 ${percent}% (${status})" "${hostname}"
+            if [ "${status}" != "OK" ]; then
+                add_issue "${status}" "磁盘 ${mount} 使用率 ${percent}% (${status})" "${hostname}"
+                add_section_finding "3.1" "${status}" "${hostname} 的磁盘 ${mount} 使用率为 ${percent}%"
+            fi
 
             local status_text
             case "${status}" in
@@ -849,6 +861,8 @@ EOF
         local status
         status=$(check_threshold "IO_WAIT" "${io_wait}")
 
+        [ "${status}" != "OK" ] && add_section_finding "3.1" "${status}" "${hostname} 的 IO Wait 为 ${io_wait}%"
+
         local status_text
         case "${status}" in
             CRIT) status_text="**异常**" ;;
@@ -860,7 +874,12 @@ EOF
             "${hostname}" "${io_wait:-N/A}" "${io_util:-N/A}" "${status_text}" \
             >> "${MD_FILE}"
     done
-    echo "" >> "${MD_FILE}"
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.1.5 本节小结
+
+EOF
+    generate_section_conclusion "3.1" "本节资源使用情况整体平稳，各服务器 CPU、内存、磁盘与 IO 指标均未触发告警阈值。"
 }
 
 # =============================================================================
@@ -932,7 +951,10 @@ EOF
             if [ "${k}" = "CLOSE_WAIT" ] || [ "${k}" = "TIME_WAIT" ]; then
                 local s
                 s=$(check_threshold "${k}" "${v}")
-                [ "${s}" != "OK" ] && add_issue "${s}" "TCP ${k} 连接数 ${v} (${s})" "${hostname}"
+                if [ "${s}" != "OK" ]; then
+                    add_issue "${s}" "TCP ${k} 连接数 ${v} (${s})" "${hostname}"
+                    add_section_finding "3.2" "${s}" "${hostname} 的 TCP ${k} 连接数为 ${v}"
+                fi
             fi
         done
 
@@ -983,6 +1005,13 @@ EOF
             "$(get_val "$i" "NET_FIREWALL")" \
             "$(get_val "$i" "NET_ROUTE")" >> "${MD_FILE}"
     done
+
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.2.5 本节小结
+
+EOF
+    generate_section_conclusion "3.2" "本节网络状态整体正常，监听端口、TCP 连接和网络附属检查未发现明显异常。"
 }
 
 # =============================================================================
@@ -1019,7 +1048,10 @@ EOF
         if [[ "${zombie}" =~ ^[0-9]+$ ]] && [[ "${zombie}" -gt 0 ]]; then
             local s
             s=$(check_threshold "ZOMBIE_COUNT" "${zombie}")
-            [ "${s}" != "OK" ] && add_issue "${s}" "僵尸进程数 ${zombie}" "${hostname}"
+            if [ "${s}" != "OK" ]; then
+                add_issue "${s}" "僵尸进程数 ${zombie}" "${hostname}"
+                add_section_finding "3.3" "${s}" "${hostname} 的僵尸进程数为 ${zombie}"
+            fi
         fi
     done
 
@@ -1142,6 +1174,9 @@ EOF
 
             oom=$(get_val "$i" "JAVA_JVM_OOM_DUMP_${idx}")
             [[ -z "${oom}" ]] && oom="NONE"
+            if [[ "${oom}" == FOUND:* ]]; then
+                add_section_finding "3.3" "CRIT" "${hostname} 的 Java 进程 ${pid} 发现 OOM Dump：${oom}"
+            fi
 
             printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" \
                 "${hostname}" "${ip}" "${pid}" "${short_name}" \
@@ -1150,6 +1185,13 @@ EOF
             idx=$((idx + 1))
         done
     done
+
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.3.5 本节小结
+
+EOF
+    generate_section_conclusion "3.3" "本节进程与 Java 应用检查整体平稳，未发现僵尸进程或 Java OOM 风险项。"
 }
 
 # =============================================================================

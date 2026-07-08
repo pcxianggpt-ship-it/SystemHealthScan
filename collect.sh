@@ -55,6 +55,46 @@ find_cmd() {
     return 1
 }
 
+format_df_usage_records() {
+    awk '
+    NR == 1 && $1 == "Filesystem" { next }
+    NF >= 6 {
+        filesystem=$1
+        mount=$6
+        if (filesystem == "overlay" || filesystem == "aufs") next
+        if (mount ~ "^/var/lib/docker/" ||
+            mount ~ "^/var/lib/containerd/" ||
+            mount ~ "^/run/containerd/" ||
+            mount ~ "^/run/docker/" ||
+            mount ~ "/docker_root/overlay2/" ||
+            mount ~ "/docker/overlay2/" ||
+            mount ~ "/overlay2/.*/merged$" ||
+            mount ~ "^/var/lib/kubelet/pods/" ||
+            mount ~ "^/run/kubernetes/") next
+        printf "%s:%s:%s:%s|", mount, $2, $3, $5
+    }' | sed 's/|$//'
+}
+
+format_df_inode_records() {
+    awk '
+    NR == 1 && $1 == "Filesystem" { next }
+    NF >= 6 {
+        filesystem=$1
+        mount=$6
+        if (filesystem == "overlay" || filesystem == "aufs") next
+        if (mount ~ "^/var/lib/docker/" ||
+            mount ~ "^/var/lib/containerd/" ||
+            mount ~ "^/run/containerd/" ||
+            mount ~ "^/run/docker/" ||
+            mount ~ "/docker_root/overlay2/" ||
+            mount ~ "/docker/overlay2/" ||
+            mount ~ "/overlay2/.*/merged$" ||
+            mount ~ "^/var/lib/kubelet/pods/" ||
+            mount ~ "^/run/kubernetes/") next
+        printf "%s:%s/%s:%s|", mount, $3, $2, $5
+    }' | sed 's/|$//'
+}
+
 # Show version information
 show_version() {
     echo "SystemHealthScan Core Collection Script v${VERSION}"
@@ -362,10 +402,7 @@ collect_basic_resources() {
     # Disk usage - fix: use $6 (mount point) for meaningful output
     local disk_info=""
     if command -v df >/dev/null 2>&1; then
-        disk_info=$(df -hP 2>/dev/null | grep -vE "^Filesystem|tmpfs|cdrom|overlay|udev|devtmpfs" | awk '
-        NF >= 6 {
-            printf "%s:%s:%s:%s|", $6, $2, $3, $5
-        }' | sed 's/|$//')
+        disk_info=$(df -hP 2>/dev/null | format_df_usage_records)
     else
         print_notice "DISK" "Unable to collect disk usage: df command not found"
     fi
@@ -374,10 +411,7 @@ collect_basic_resources() {
     # Inode usage
     local inode_info=""
     if command -v df >/dev/null 2>&1; then
-        inode_info=$(df -iP 2>/dev/null | grep -vE "^Filesystem|tmpfs|cdrom|overlay|udev|devtmpfs" | awk '
-        NF >= 6 {
-            printf "%s:%s/%s:%s|", $6, $3, $2, $5
-        }' | sed 's/|$//')
+        inode_info=$(df -iP 2>/dev/null | format_df_inode_records)
     else
         print_notice "INODE" "Unable to collect inode usage: df command not found"
     fi

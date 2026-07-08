@@ -384,6 +384,36 @@ section_total_count() {
     echo "${total}"
 }
 
+section_finding_message() {
+    local level="$1"
+    local section="$2"
+    local index="$3"
+
+    case "${level}" in
+        CRIT) echo "${SECTION_CRIT[${section}__${level}__${index}]:-}" ;;
+        WARN) echo "${SECTION_WARN[${section}__${level}__${index}]:-}" ;;
+        INFO) echo "${SECTION_INFO[${section}__${level}__${index}]:-}" ;;
+        *)    echo "" ;;
+    esac
+}
+
+emit_section_findings_for_level() {
+    local level="$1"
+    local section count i msg
+
+    for section in "${SECTION_FINDING_SECTIONS[@]}"; do
+        count=$(section_key_count "${level}" "${section}")
+        i=1
+        while [ "${i}" -le "${count}" ]; do
+            msg=$(section_finding_message "${level}" "${section}" "${i}")
+            if [ -n "${msg}" ]; then
+                echo "- [章节 ${section}] ${msg}" >> "${MD_FILE}"
+            fi
+            i=$((i + 1))
+        done
+    done
+}
+
 emit_overall_warning_findings() {
     local limit=8
     local printed=0
@@ -403,7 +433,7 @@ emit_overall_warning_findings() {
         count=$(section_key_count "WARN" "${section}")
         i=1
         while [ "${i}" -le "${count}" ]; do
-            msg="${SECTION_WARN[${section}__WARN__${i}]:-}"
+            msg=$(section_finding_message "WARN" "${section}" "${i}")
             if [ -n "${msg}" ]; then
                 if [ "${printed}" -lt "${limit}" ]; then
                     echo "- [章节 ${section}] ${msg}" >> "${MD_FILE}"
@@ -699,6 +729,16 @@ EOF
 # =============================================================================
 
 generate_issues_summary() {
+    local section_crit_count section_warn_count section_info_count
+    local total_crit_count total_warn_count total_info_count
+
+    section_crit_count=$(section_total_count "CRIT")
+    section_warn_count=$(section_total_count "WARN")
+    section_info_count=$(section_total_count "INFO")
+    total_crit_count=$((${#ISSUES_CRIT[@]} + section_crit_count))
+    total_warn_count=$((${#ISSUES_WARN[@]} + section_warn_count))
+    total_info_count=$((${#ISSUES_INFO[@]} + section_info_count))
+
     cat >> "${MD_FILE}" <<EOF
 
 # 2. 问题汇总
@@ -708,12 +748,13 @@ EOF
     generate_overall_conclusion
 
     # Critical issues
-    if [ ${#ISSUES_CRIT[@]} -gt 0 ]; then
+    if [ "${total_crit_count}" -gt 0 ]; then
         echo "## 2.2 严重问题（需立即处理）" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         for issue in "${ISSUES_CRIT[@]}"; do
             echo "- ${issue}" >> "${MD_FILE}"
         done
+        emit_section_findings_for_level "CRIT"
         echo "" >> "${MD_FILE}"
     else
         echo "## 2.2 严重问题" >> "${MD_FILE}"
@@ -723,12 +764,13 @@ EOF
     fi
 
     # Warnings
-    if [ ${#ISSUES_WARN[@]} -gt 0 ]; then
+    if [ "${total_warn_count}" -gt 0 ]; then
         echo "## 2.3 警告项（建议处理）" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         for issue in "${ISSUES_WARN[@]}"; do
             echo "- ${issue}" >> "${MD_FILE}"
         done
+        emit_section_findings_for_level "WARN"
         echo "" >> "${MD_FILE}"
     else
         echo "## 2.3 警告项" >> "${MD_FILE}"
@@ -738,12 +780,13 @@ EOF
     fi
 
     # Suggestions
-    if [ ${#ISSUES_INFO[@]} -gt 0 ]; then
+    if [ "${total_info_count}" -gt 0 ]; then
         echo "## 2.4 建议优化项" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         for issue in "${ISSUES_INFO[@]}"; do
             echo "- ${issue}" >> "${MD_FILE}"
         done
+        emit_section_findings_for_level "INFO"
         echo "" >> "${MD_FILE}"
     else
         echo "## 2.4 建议优化项" >> "${MD_FILE}"

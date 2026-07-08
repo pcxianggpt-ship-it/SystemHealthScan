@@ -36,6 +36,19 @@ assert_match() {
     fi
 }
 
+# 断言：markdown 文件中不匹配正则
+assert_not_match() {
+    local md_file="$1"
+    local regex="$2"
+    local label="$3"
+    run_test
+    if grep -qE "${regex}" "${md_file}" 2>/dev/null; then
+        fail "${label} (不应匹配: ${regex})"
+    else
+        pass "${label}"
+    fi
+}
+
 # 断言：markdown 文件中不包含
 assert_not_contains() {
     local md_file="$1"
@@ -77,6 +90,7 @@ else
     assert_not_contains "${LATEST_MD}" "无严重问题。" "样例存在章节严重发现时 2.2 不应宣称无严重问题"
     assert_match "${LATEST_MD}" '## 2\.3 警告项' "警告项章节顺延为 2.3"
     assert_not_contains "${LATEST_MD}" "无警告项。" "样例存在章节警告发现时 2.3 不应宣称无警告项"
+    assert_not_match "${LATEST_MD}" '其余 .* 项请查看各章节明细与本节小结' "总体结论不应截断警告项"
     assert_match "${LATEST_MD}" '## 2\.4 建议优化项' "建议优化项章节顺延为 2.4"
     assert_match "${LATEST_MD}" '^- \[章节 3\.[0-9]\]' "问题汇总包含章节发现明细"
     assert_not_contains "${LATEST_MD}" "主机级状态统计为 3 台正常、0 台存在警告、0 台存在异常" "章节级 WARN/CRIT 应更新主机级状态统计"

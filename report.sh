@@ -64,7 +64,6 @@ declare -A SECTION_CRIT=()
 declare -A SECTION_WARN=()
 declare -A SECTION_INFO=()
 declare -A SECTION_COUNT_IN_SUMMARY=()
-declare -A SECTION_SERVER=()
 SECTION_FINDING_SECTIONS=("3.1" "3.2" "3.3" "3.4" "3.5" "3.6" "3.7")
 
 # =============================================================================
@@ -372,19 +371,16 @@ add_section_finding() {
             SECTION_CRIT["${count_key}"]="${count}"
             SECTION_CRIT["${item_key}"]="${message}"
             SECTION_COUNT_IN_SUMMARY["${item_key}"]="${count_in_summary}"
-            SECTION_SERVER["${item_key}"]="${server}"
             ;;
         WARN)
             SECTION_WARN["${count_key}"]="${count}"
             SECTION_WARN["${item_key}"]="${message}"
             SECTION_COUNT_IN_SUMMARY["${item_key}"]="${count_in_summary}"
-            SECTION_SERVER["${item_key}"]="${server}"
             ;;
         INFO)
             SECTION_INFO["${count_key}"]="${count}"
             SECTION_INFO["${item_key}"]="${message}"
             SECTION_COUNT_IN_SUMMARY["${item_key}"]="${count_in_summary}"
-            SECTION_SERVER["${item_key}"]="${server}"
             ;;
     esac
 
@@ -453,18 +449,10 @@ emit_section_findings_for_level() {
 }
 
 emit_overall_warning_findings() {
-    local limit=8
-    local printed=0
-    local remaining=0
     local issue section count i msg
 
     for issue in "${ISSUES_WARN[@]}"; do
-        if [ "${printed}" -lt "${limit}" ]; then
-            echo "- ${issue}" >> "${MD_FILE}"
-            printed=$((printed + 1))
-        else
-            remaining=$((remaining + 1))
-        fi
+        echo "- ${issue}" >> "${MD_FILE}"
     done
 
     for section in "${SECTION_FINDING_SECTIONS[@]}"; do
@@ -473,20 +461,11 @@ emit_overall_warning_findings() {
         while [ "${i}" -le "${count}" ]; do
             msg=$(section_finding_message "WARN" "${section}" "${i}")
             if [ -n "${msg}" ] && section_finding_counts_in_summary "WARN" "${section}" "${i}"; then
-                if [ "${printed}" -lt "${limit}" ]; then
-                    echo "- [章节 ${section}] ${msg}" >> "${MD_FILE}"
-                    printed=$((printed + 1))
-                else
-                    remaining=$((remaining + 1))
-                fi
+                echo "- [章节 ${section}] ${msg}" >> "${MD_FILE}"
             fi
             i=$((i + 1))
         done
     done
-
-    if [ "${remaining}" -gt 0 ]; then
-        echo "- 其余 ${remaining} 项请查看各章节明细与本节小结。" >> "${MD_FILE}"
-    fi
 }
 
 emit_limited_section_findings() {

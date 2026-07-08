@@ -1214,6 +1214,12 @@ EOF
         local redis nacos mysql_ver mysql_conn repl innodb
         redis=$(get_val "$i" "REDIS_STATUS")
         nacos=$(get_val "$i" "NACOS_STATUS")
+        if [[ "${redis}" == "NOT_RUNNING" ]]; then
+            add_section_finding "3.4" "WARN" "${hostname} 的 Redis 未运行"
+        fi
+        if [[ "${nacos}" == "NOT_RUNNING" ]]; then
+            add_section_finding "3.4" "WARN" "${hostname} 的 Nacos 未运行"
+        fi
         # REDIS_STATUS 可能是 "NOT_RUNNING" 或 "RUNNING|VERSION:..."；统一显示 RUNNING/NOT_RUNNING
         [[ "${redis}" == RUNNING* ]] && redis="RUNNING"
         [[ -z "${redis}" ]] && redis="N/A"
@@ -1223,6 +1229,9 @@ EOF
         # MYSQL_STATUS 格式：RUNNING|VERSION:5.7|CONNECTIONS:10/100|...
         local mysql_status
         mysql_status=$(get_val "$i" "MYSQL_STATUS")
+        if [[ "${mysql_status}" == "NOT_RUNNING" ]]; then
+            add_section_finding "3.4" "WARN" "${hostname} 的 MySQL 未运行"
+        fi
         if [[ "${mysql_status}" == "RUNNING|"* ]]; then
             mysql_ver=$(echo "${mysql_status}" | grep -oE 'VERSION:[^|]+' | cut -d: -f2 || true)
             mysql_conn=$(echo "${mysql_status}" | grep -oE 'CONNECTIONS:[^|]+' | cut -d: -f2 || true)
@@ -1247,6 +1256,13 @@ EOF
             "${hostname}" "${ip}" "${redis}" "${nacos}" \
             "${mysql_ver}" "${mysql_conn}" "${repl}" "${innodb}" >> "${MD_FILE}"
     done
+
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.4.1 本节小结
+
+EOF
+    generate_section_conclusion "3.4" "本节中间件状态整体正常，Redis、Nacos 与 MySQL 检查未发现明显异常。"
 }
 
 # =============================================================================
@@ -1283,6 +1299,15 @@ EOF
         [[ -z "${pass_auth}" ]] && pass_auth="N/A"
         [[ -z "${empty_pw}" ]] && empty_pw="N/A"
         [[ -z "${max_auth}" ]] && max_auth="N/A"
+        if [[ "${root_login}" == "yes" ]]; then
+            add_section_finding "3.5" "WARN" "${hostname} 允许 SSH Root 登录"
+        fi
+        if [[ "${pass_auth}" == "yes" ]]; then
+            add_section_finding "3.5" "WARN" "${hostname} 允许 SSH 密码认证"
+        fi
+        if [[ "${empty_pw}" == "yes" ]]; then
+            add_section_finding "3.5" "CRIT" "${hostname} 允许 SSH 空密码登录"
+        fi
         printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
             "${hostname}" "${ip}" "${port}" "${root_login}" "${pass_auth}" "${empty_pw}" "${max_auth}" >> "${MD_FILE}"
     done
@@ -1340,6 +1365,12 @@ EOF
         [[ -z "${ntp}" ]]       && ntp="N/A"
         [[ -z "${locked}" ]]    && locked="N/A"
         [[ -z "${sudo_today}" ]] && sudo_today="N/A"
+        if [[ "${ntp}" == ERROR* || "${ntp}" == "NOT_SYNCED" ]]; then
+            add_section_finding "3.5" "WARN" "${hostname} 的 NTP 同步状态为 ${ntp}"
+        fi
+        if [[ "${locked}" =~ ^[0-9]+$ && "${locked}" -gt 0 ]]; then
+            add_section_finding "3.5" "INFO" "${hostname} 存在 ${locked} 个锁定用户"
+        fi
         printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
             "${hostname}" "${ip}" "${selinux}" "${fail2ban}" "${ntp}" "${locked}" "${sudo_today}" >> "${MD_FILE}"
     done
@@ -1359,6 +1390,13 @@ EOF
         [[ -z "${login}" ]] && login="无"
         printf "**%s (%s)：** %s\n\n" "${hostname}" "${ip}" "${login}" >> "${MD_FILE}"
     done
+
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.5.5 本节小结
+
+EOF
+    generate_section_conclusion "3.5" "本节系统安全检查整体平稳，SSH 配置、时间同步和用户权限检查未发现明显风险。"
 }
 
 # =============================================================================
@@ -1440,6 +1478,33 @@ EOF
             printf "**%s (%s)：** %s\n\n" "${hostname}" "${ip}" "${anacron_val}" >> "${MD_FILE}"
         done
     fi
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        local hostname="${SERVER_HOSTNAMES[$i]}"
+        local analysis
+        analysis=$(get_val "$i" "CRONTAB_ANALYSIS")
+        [[ -z "${analysis}" || "${analysis}" == "N/A" || "${analysis}" == "NONE" ]] && continue
+
+        IFS='|' read -ra analysis_parts <<< "${analysis}"
+        local part level detail
+        for part in "${analysis_parts[@]}"; do
+            level="${part%%:*}"
+            detail="${part#*:}"
+            [[ -z "${level}" || "${detail}" == "${part}" ]] && continue
+            case "${level}" in
+                ERROR) add_section_finding "3.6" "CRIT" "${hostname} 的定时任务分析发现 ${detail}" ;;
+                WARN)  add_section_finding "3.6" "WARN" "${hostname} 的定时任务分析发现 ${detail}" ;;
+                INFO)  add_section_finding "3.6" "INFO" "${hostname} 的定时任务分析发现 ${detail}" ;;
+            esac
+        done
+    done
+
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.6.1 本节小结
+
+EOF
+    generate_section_conclusion "3.6" "本节定时任务检查整体正常，未发现脚本缺失或可疑任务。"
 }
 
 # =============================================================================
@@ -1469,13 +1534,32 @@ EOF
         last_login=$(get_val "$i" "LAST_LOGIN")
 
         # 提取计数（值可能含 |SRC: 等附加信息，取首段数字）
-        local oom_count
+        local kernel_count oom_count segfault_count syslog_count
+        kernel_count=$(echo "${kernel_err}" | awk -F'|' '{print $1}')
         oom_count=$(echo "${oom}" | awk -F'|' '{print $1}')
+        segfault_count=$(echo "${segfault}" | awk -F'|' '{print $1}')
+        syslog_count=$(echo "${syslog_err}" | awk -F'|' '{print $1}')
+        [[ -z "${kernel_count}" ]] && kernel_count="0"
         [[ -z "${oom_count}" ]] && oom_count="0"
+        [[ -z "${segfault_count}" ]] && segfault_count="0"
+        [[ -z "${syslog_count}" ]] && syslog_count="0"
 
         # OOM 触发则记录 CRIT
         if [[ "${oom_count}" =~ ^[0-9]+$ ]] && [[ "${oom_count}" -gt 0 ]]; then
             add_issue "CRIT" "OOM Killer 今日触发 ${oom} 次" "${hostname}"
+            add_section_finding "3.7" "CRIT" "${hostname} 今日 OOM Killer 触发 ${oom}"
+        fi
+        if [[ "${kernel_count}" =~ ^[0-9]+$ && "${kernel_count}" -gt 0 ]]; then
+            add_section_finding "3.7" "WARN" "${hostname} 今日内核错误 ${kernel_err}"
+        fi
+        if [[ "${segfault_count}" =~ ^[0-9]+$ && "${segfault_count}" -gt 0 ]]; then
+            add_section_finding "3.7" "WARN" "${hostname} 今日段错误 ${segfault}"
+        fi
+        if [[ "${syslog_count}" =~ ^[0-9]+$ && "${syslog_count}" -gt 0 ]]; then
+            add_section_finding "3.7" "WARN" "${hostname} 今日日志错误 ${syslog_err}"
+        fi
+        if [[ -n "${sec_alert}" && "${sec_alert}" != "NONE" && "${sec_alert}" != "N/A" ]]; then
+            add_section_finding "3.7" "WARN" "${hostname} 存在安全告警 ${sec_alert}"
         fi
 
         [[ -z "${auth_fail}" ]]   && auth_fail="N/A"
@@ -1490,6 +1574,13 @@ EOF
             "${hostname}" "${ip}" "${auth_fail}" "${kernel_err}" "${oom}" \
             "${segfault}" "${syslog_err}" "${sec_alert}" "${last_login}" >> "${MD_FILE}"
     done
+
+    cat >> "${MD_FILE}" <<EOF
+
+### 3.7.1 本节小结
+
+EOF
+    generate_section_conclusion "3.7" "本节日志与告警检查整体平稳，未发现 OOM、内核错误或安全告警。"
 }
 
 # =============================================================================

@@ -63,6 +63,7 @@ declare -a ISSUES_INFO=()
 declare -A SECTION_CRIT=()
 declare -A SECTION_WARN=()
 declare -A SECTION_INFO=()
+SECTION_FINDING_SECTIONS=("3.1" "3.2" "3.3" "3.4" "3.5" "3.6" "3.7")
 
 # =============================================================================
 # Utility functions
@@ -370,6 +371,56 @@ add_section_finding() {
     esac
 }
 
+section_total_count() {
+    local level="$1"
+    local total=0
+    local section count
+
+    for section in "${SECTION_FINDING_SECTIONS[@]}"; do
+        count=$(section_key_count "${level}" "${section}")
+        total=$((total + count))
+    done
+
+    echo "${total}"
+}
+
+emit_overall_warning_findings() {
+    local limit=8
+    local printed=0
+    local remaining=0
+    local issue section count i msg
+
+    for issue in "${ISSUES_WARN[@]}"; do
+        if [ "${printed}" -lt "${limit}" ]; then
+            echo "- ${issue}" >> "${MD_FILE}"
+            printed=$((printed + 1))
+        else
+            remaining=$((remaining + 1))
+        fi
+    done
+
+    for section in "${SECTION_FINDING_SECTIONS[@]}"; do
+        count=$(section_key_count "WARN" "${section}")
+        i=1
+        while [ "${i}" -le "${count}" ]; do
+            msg="${SECTION_WARN[${section}__WARN__${i}]:-}"
+            if [ -n "${msg}" ]; then
+                if [ "${printed}" -lt "${limit}" ]; then
+                    echo "- [章节 ${section}] ${msg}" >> "${MD_FILE}"
+                    printed=$((printed + 1))
+                else
+                    remaining=$((remaining + 1))
+                fi
+            fi
+            i=$((i + 1))
+        done
+    done
+
+    if [ "${remaining}" -gt 0 ]; then
+        echo "- 其余 ${remaining} 项请查看各章节明细与本节小结。" >> "${MD_FILE}"
+    fi
+}
+
 emit_limited_section_findings() {
     local section="$1"
     local printed=0
@@ -428,6 +479,15 @@ generate_overall_conclusion() {
     local total_count=${#SERVER_HOSTNAMES[@]}
     local crit_hosts=0 warn_hosts=0 ok_hosts=0
     local h issue
+    local section_crit_count section_warn_count section_info_count
+    local total_crit_count total_warn_count total_info_count
+
+    section_crit_count=$(section_total_count "CRIT")
+    section_warn_count=$(section_total_count "WARN")
+    section_info_count=$(section_total_count "INFO")
+    total_crit_count=$((${#ISSUES_CRIT[@]} + section_crit_count))
+    total_warn_count=$((${#ISSUES_WARN[@]} + section_warn_count))
+    total_info_count=$((${#ISSUES_INFO[@]} + section_info_count))
 
     for h in "${SERVER_HEALTH[@]}"; do
         case "${h}" in
@@ -440,15 +500,15 @@ generate_overall_conclusion() {
     echo "## 2.1 总体结论" >> "${MD_FILE}"
     echo "" >> "${MD_FILE}"
 
-    if [ "${#ISSUES_CRIT[@]}" -eq 0 ] && [ "${#ISSUES_WARN[@]}" -eq 0 ]; then
+    if [ "${total_crit_count}" -eq 0 ] && [ "${total_warn_count}" -eq 0 ]; then
         printf "本次共巡检 %d 台服务器，巡检结果整体平稳，未发现严重问题和警告项。建议按常规周期持续观察。\n\n" \
             "${total_count}" >> "${MD_FILE}"
     else
-        printf "本次共巡检 %d 台服务器，其中 %d 台正常、%d 台存在警告、%d 台存在异常。共发现严重问题 %d 项、警告项 %d 项、建议优化项 %d 项。" \
+        printf "本次共巡检 %d 台服务器，主机级状态统计为 %d 台正常、%d 台存在警告、%d 台存在异常。综合全局问题与章节小结，共发现严重问题 %d 项、警告项 %d 项、建议优化项 %d 项。" \
             "${total_count}" "${ok_hosts}" "${warn_hosts}" "${crit_hosts}" \
-            "${#ISSUES_CRIT[@]}" "${#ISSUES_WARN[@]}" "${#ISSUES_INFO[@]}" >> "${MD_FILE}"
+            "${total_crit_count}" "${total_warn_count}" "${total_info_count}" >> "${MD_FILE}"
 
-        if [ "${#ISSUES_CRIT[@]}" -gt 0 ]; then
+        if [ "${total_crit_count}" -gt 0 ]; then
             echo "报告中存在需要优先处理的严重问题，建议先处理严重问题，再复核警告项。" >> "${MD_FILE}"
         else
             echo "当前主要需要关注警告项，建议结合业务负载持续观察。" >> "${MD_FILE}"
@@ -456,12 +516,13 @@ generate_overall_conclusion() {
         echo "" >> "${MD_FILE}"
     fi
 
-    if [ "${#ISSUES_WARN[@]}" -gt 0 ]; then
+    if [ "${total_warn_count}" -gt 0 ]; then
         echo "当前警告项如下：" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
-        for issue in "${ISSUES_WARN[@]}"; do
-            echo "- ${issue}" >> "${MD_FILE}"
-        done
+        emit_overall_warning_findings
+        echo "" >> "${MD_FILE}"
+    elif [ "${total_crit_count}" -gt 0 ]; then
+        echo "本次未单独列出警告项，请优先查看严重问题及对应章节小结。" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
     else
         echo "本次未发现警告项。" >> "${MD_FILE}"

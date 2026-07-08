@@ -59,6 +59,11 @@ declare -a ISSUES_CRIT=()
 declare -a ISSUES_WARN=()
 declare -a ISSUES_INFO=()
 
+# Section-level conclusion findings, stored as indexed values per section/level.
+declare -A SECTION_CRIT=()
+declare -A SECTION_WARN=()
+declare -A SECTION_INFO=()
+
 # =============================================================================
 # Utility functions
 # =============================================================================
@@ -320,6 +325,148 @@ add_issue() {
             break
         fi
     done
+}
+
+section_key_count() {
+    local level="$1"
+    local section="$2"
+    local count_key="${section}__${level}__count"
+
+    case "${level}" in
+        CRIT) echo "${SECTION_CRIT[${count_key}]:-0}" ;;
+        WARN) echo "${SECTION_WARN[${count_key}]:-0}" ;;
+        INFO) echo "${SECTION_INFO[${count_key}]:-0}" ;;
+        *)    echo "0" ;;
+    esac
+}
+
+add_section_finding() {
+    local section="$1"
+    local level="$2"
+    local message="$3"
+
+    [ -z "${message}" ] && return
+
+    local count
+    count=$(section_key_count "${level}" "${section}")
+    count=$((count + 1))
+
+    local count_key="${section}__${level}__count"
+    local item_key="${section}__${level}__${count}"
+
+    case "${level}" in
+        CRIT)
+            SECTION_CRIT["${count_key}"]="${count}"
+            SECTION_CRIT["${item_key}"]="${message}"
+            ;;
+        WARN)
+            SECTION_WARN["${count_key}"]="${count}"
+            SECTION_WARN["${item_key}"]="${message}"
+            ;;
+        INFO)
+            SECTION_INFO["${count_key}"]="${count}"
+            SECTION_INFO["${item_key}"]="${message}"
+            ;;
+    esac
+}
+
+emit_limited_section_findings() {
+    local section="$1"
+    local printed=0
+    local remaining=0
+    local limit=5
+    local level count i msg separator
+
+    for level in CRIT WARN; do
+        count=$(section_key_count "${level}" "${section}")
+        i=1
+        while [ "${i}" -le "${count}" ]; do
+            case "${level}" in
+                CRIT) msg="${SECTION_CRIT[${section}__${level}__${i}]:-}" ;;
+                WARN) msg="${SECTION_WARN[${section}__${level}__${i}]:-}" ;;
+            esac
+
+            if [ "${printed}" -lt "${limit}" ]; then
+                separator=""
+                [ "${printed}" -gt 0 ] && separator="；"
+                printf "%s%s" "${separator}" "${msg}" >> "${MD_FILE}"
+                printed=$((printed + 1))
+            else
+                remaining=$((remaining + 1))
+            fi
+            i=$((i + 1))
+        done
+    done
+
+    if [ "${remaining}" -gt 0 ]; then
+        printf "；其余 %d 项请查看本章明细表" "${remaining}" >> "${MD_FILE}"
+    fi
+}
+
+generate_section_conclusion() {
+    local section="$1"
+    local normal_text="$2"
+    local crit_count warn_count
+    crit_count=$(section_key_count "CRIT" "${section}")
+    warn_count=$(section_key_count "WARN" "${section}")
+
+    if [ "${crit_count}" -gt 0 ]; then
+        echo "本节发现需要优先处理的异常项：" >> "${MD_FILE}"
+        emit_limited_section_findings "${section}"
+        echo "。建议尽快复核并处理。" >> "${MD_FILE}"
+    elif [ "${warn_count}" -gt 0 ]; then
+        echo "本节整体状态可接受，但发现部分指标触发警告阈值：" >> "${MD_FILE}"
+        emit_limited_section_findings "${section}"
+        echo "。建议结合业务负载持续观察。" >> "${MD_FILE}"
+    else
+        echo "${normal_text}" >> "${MD_FILE}"
+    fi
+    echo "" >> "${MD_FILE}"
+}
+
+generate_overall_conclusion() {
+    local total_count=${#SERVER_HOSTNAMES[@]}
+    local crit_hosts=0 warn_hosts=0 ok_hosts=0
+    local h issue
+
+    for h in "${SERVER_HEALTH[@]}"; do
+        case "${h}" in
+            CRIT) crit_hosts=$((crit_hosts + 1)) ;;
+            WARN) warn_hosts=$((warn_hosts + 1)) ;;
+            *)    ok_hosts=$((ok_hosts + 1)) ;;
+        esac
+    done
+
+    echo "## 2.1 总体结论" >> "${MD_FILE}"
+    echo "" >> "${MD_FILE}"
+
+    if [ "${#ISSUES_CRIT[@]}" -eq 0 ] && [ "${#ISSUES_WARN[@]}" -eq 0 ]; then
+        printf "本次共巡检 %d 台服务器，巡检结果整体平稳，未发现严重问题和警告项。建议按常规周期持续观察。\n\n" \
+            "${total_count}" >> "${MD_FILE}"
+    else
+        printf "本次共巡检 %d 台服务器，其中 %d 台正常、%d 台存在警告、%d 台存在异常。共发现严重问题 %d 项、警告项 %d 项、建议优化项 %d 项。" \
+            "${total_count}" "${ok_hosts}" "${warn_hosts}" "${crit_hosts}" \
+            "${#ISSUES_CRIT[@]}" "${#ISSUES_WARN[@]}" "${#ISSUES_INFO[@]}" >> "${MD_FILE}"
+
+        if [ "${#ISSUES_CRIT[@]}" -gt 0 ]; then
+            echo "报告中存在需要优先处理的严重问题，建议先处理严重问题，再复核警告项。" >> "${MD_FILE}"
+        else
+            echo "当前主要需要关注警告项，建议结合业务负载持续观察。" >> "${MD_FILE}"
+        fi
+        echo "" >> "${MD_FILE}"
+    fi
+
+    if [ "${#ISSUES_WARN[@]}" -gt 0 ]; then
+        echo "当前警告项如下：" >> "${MD_FILE}"
+        echo "" >> "${MD_FILE}"
+        for issue in "${ISSUES_WARN[@]}"; do
+            echo "- ${issue}" >> "${MD_FILE}"
+        done
+        echo "" >> "${MD_FILE}"
+    else
+        echo "本次未发现警告项。" >> "${MD_FILE}"
+        echo "" >> "${MD_FILE}"
+    fi
 }
 
 # Parse compound value: split by | then by :

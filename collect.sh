@@ -245,14 +245,16 @@ collect_system_info() {
     # CPU cores
     local cpu_cores=0
     if [ -f /proc/cpuinfo ]; then
-        cpu_cores=$(grep -c "^processor" /proc/cpuinfo 2>/dev/null || echo "0")
+        cpu_cores=$(grep -c "^processor" /proc/cpuinfo 2>/dev/null || true)
+        cpu_cores=${cpu_cores:-0}
     fi
     print_kv "CPU_CORES" "${cpu_cores}"
 
     # CPU sockets
     local cpu_sockets=0
     if [ -f /proc/cpuinfo ]; then
-        cpu_sockets=$(grep "physical id" /proc/cpuinfo 2>/dev/null | sort -u | wc -l || echo "1")
+        cpu_sockets=$(grep "physical id" /proc/cpuinfo 2>/dev/null | sort -u | wc -l || true)
+        cpu_sockets=${cpu_sockets:-0}
     fi
     [ "${cpu_sockets}" -eq 0 ] && cpu_sockets=1
     print_kv "CPU_SOCKETS" "${cpu_sockets}"
@@ -537,7 +539,8 @@ collect_network_status() {
     if command -v firewall-cmd >/dev/null 2>&1; then
         if firewall-cmd --state 2>/dev/null | grep -q "running"; then
             local rules=0
-            rules=$(firewall-cmd --list-all 2>/dev/null | wc -l || echo "0")
+            rules=$(firewall-cmd --list-all 2>/dev/null | wc -l || true)
+            rules=${rules:-0}
             firewall="firewalld:ACTIVE|RULES:${rules}"
         else
             firewall="firewalld:INACTIVE"
@@ -779,7 +782,8 @@ collect_java_processes() {
         dump_path=$(echo "${cmdline}" | grep -oP '(?<=HeapDumpPath=)\S+' || true)
         if [ -n "${dump_path}" ] && [ -d "${dump_path}" ]; then
             local dump_count=0
-            dump_count=$(find "${dump_path}" -name "*.hprof" -type f 2>/dev/null | wc -l || echo "0")
+            dump_count=$(find "${dump_path}" -name "*.hprof" -type f 2>/dev/null | wc -l || true)
+            dump_count=${dump_count:-0}
             if [ "${dump_count}" -gt 0 ]; then
                 local dump_files
                 dump_files=$(find "${dump_path}" -name "*.hprof" -type f -printf "%f:%TY-%Tm-%Td:%s\n" 2>/dev/null | head -5 | awk -v size_div=1073741824 '{
@@ -834,7 +838,8 @@ collect_middleware() {
                 # Slowlog counts
                 local slow_10=0 slow_50=0 slow_100=0
                 if command -v redis-cli >/dev/null 2>&1; then
-                    slow_10=$(redis-cli slowlog get 128 2>/dev/null | grep -cE "^\d+" || echo "0")
+                    slow_10=$(redis-cli slowlog get 128 2>/dev/null | grep -cE "^[0-9]" || true)
+                    slow_10=${slow_10:-0}
                 fi
                 redis_slowlog="10MS:${slow_10}|50MS:0|100MS:0"
 
@@ -843,7 +848,8 @@ collect_middleware() {
                 redis_role=$(echo "${redis_info}" | grep "^role:" | cut -d: -f2 | tr -d '\r' || echo "unknown")
                 if [ "${redis_role}" = "master" ]; then
                     local slave_count=0
-                    slave_count=$(echo "${redis_info}" | grep -c "^slave[0-9]" || echo "0")
+                    slave_count=$(echo "${redis_info}" | grep -c "^slave[0-9]" || true)
+                    slave_count=${slave_count:-0}
                     redis_replication="ROLE:MASTER|SLAVES:${slave_count}|LAG:0"
                 elif [ "${redis_role}" = "slave" ]; then
                     local master_link=""
@@ -1238,7 +1244,8 @@ collect_logs_alerts() {
         oom_info=$(grep "${today}" /var/log/kern.log 2>/dev/null | grep -i "oom-killer" || true)
         if [ -n "${oom_info}" ]; then
             local oom_count=0
-            oom_count=$(echo "${oom_info}" | wc -l || echo "0")
+            oom_count=$(echo "${oom_info}" | wc -l || true)
+            oom_count=${oom_count:-0}
             local oom_detail
             oom_detail=$(echo "${oom_info}" | tail -1 | grep -oP 'Killed process \K.*' || true)
             oom_killer="${oom_count}|KILLED:${oom_detail:-unknown}"
@@ -1248,7 +1255,8 @@ collect_logs_alerts() {
         oom_info=$(grep "${today}" /var/log/messages 2>/dev/null | grep -i "oom-killer" || true)
         if [ -n "${oom_info}" ]; then
             local oom_count=0
-            oom_count=$(echo "${oom_info}" | wc -l || echo "0")
+            oom_count=$(echo "${oom_info}" | wc -l || true)
+            oom_count=${oom_count:-0}
             local oom_detail
             oom_detail=$(echo "${oom_info}" | tail -1 | grep -oP 'Killed process \K.*' || true)
             oom_killer="${oom_count}|KILLED:${oom_detail:-unknown}"

@@ -168,17 +168,18 @@
 **6.3.4 Java 进程详情（折叠命令行）**
 
 ```
-| 主机 | IP | PID | 进程名 | Xmx | GC Old% | OOM | 日志路径 |
+| 主机 | IP | PID | 进程名 | 启动时间 | 运行时长 | Xmx | GC Old% | OOM |
 ```
 
 - **进程名**：从完整命令行提取，按优先级：
   1. `-jar xxx.jar` 的 `xxx.jar` 文件名
   2. `--class xxx` 或最后一个非选项参数的主类名（取最后一段 `.` 后的简短名）
   3. 否则取 `java` 或绝对路径的 basename
+- **启动时间**：从 `JAVA_PS_<idx>` 的 `START` 字段提取
+- **运行时长**：从 `JAVA_PS_<idx>` 的 `RUNTIME` 字段提取
 - **Xmx**：从 `JAVA_PS_<idx>_JVM` 提取，格式 `Xms:..:Xmx:..`，显示 Xmx 部分（如 `1g` / `256M` / `default`）
 - **GC Old%**：从 `JAVA_PS_<idx>_GC` 提取 OldGen 百分比
 - **OOM**：`JAVA_PS_<idx>_OOM_DUMP`
-- **日志路径**：`JAVA_PS_<idx>_LOG`，简化为 `SOURCE:NOT_FOUND` 或实际路径
 
 **6.3.5 附录 B：Java 完整命令行**
 

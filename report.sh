@@ -947,8 +947,8 @@ EOF
 
 ### 3.3.4 Java 进程详情
 
-| 主机 | IP | PID | 进程名 | Xmx | GC Old% | OOM | 日志路径 |
-|------|----|-----|--------|-----|---------|-----|----------|
+| 主机 | IP | PID | 进程名 | 启动时间 | 运行时长 | Xmx | GC Old% | OOM |
+|------|----|-----|--------|----------|----------|-----|---------|-----|
 EOF
 
     for i in "${!SERVER_HOSTNAMES[@]}"; do
@@ -963,12 +963,16 @@ EOF
 
         local idx=1
         while [[ ${idx} -le ${java_count} ]]; do
-            local ps_field pid cmdline short_name xmx gc_old oom log_path
+            local ps_field pid start_time runtime cmdline short_name xmx gc_old oom
 
             # JAVA_PS_<idx> 是复合字段：USER:user|PID:12345|START:...|...
             ps_field=$(get_val "$i" "JAVA_PS_${idx}")
             pid=$(echo "${ps_field}" | grep -oE 'PID:[^|]+' | cut -d: -f2 || true)
             [[ -z "${pid}" ]] && pid="N/A"
+            start_time=$(echo "${ps_field}" | grep -oE 'START:[^|]+' | cut -d: -f2- || true)
+            [[ -z "${start_time}" ]] && start_time="N/A"
+            runtime=$(echo "${ps_field}" | grep -oE 'RUNTIME:[^|]+' | cut -d: -f2- || true)
+            [[ -z "${runtime}" ]] && runtime="N/A"
 
             cmdline=$(get_val "$i" "JAVA_CMD_${idx}")
             short_name=$(extract_short_process_name "${cmdline}")
@@ -990,12 +994,9 @@ EOF
             oom=$(get_val "$i" "JAVA_JVM_OOM_DUMP_${idx}")
             [[ -z "${oom}" ]] && oom="NONE"
 
-            log_path=$(get_val "$i" "JAVA_LOG_COLLECT_${idx}")
-            [[ -z "${log_path}" ]] && log_path="SOURCE:NOT_FOUND"
-
-            printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" \
+            printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" \
                 "${hostname}" "${ip}" "${pid}" "${short_name}" \
-                "${xmx}" "${gc_old}" "${oom}" "${log_path}" >> "${MD_FILE}"
+                "${start_time}" "${runtime}" "${xmx}" "${gc_old}" "${oom}" >> "${MD_FILE}"
 
             idx=$((idx + 1))
         done

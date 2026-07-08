@@ -99,7 +99,8 @@ else
     assert_match "${LATEST_MD}" '服务状态' "服务状态子节存在"
 
     # Java 进程详情表头（折叠命令行）
-    assert_match "${LATEST_MD}" '\| 主机 \| IP \| PID \| 进程名 \| Xmx \| GC Old% \| OOM \| 日志路径 \|' "Java 详情表头"
+    assert_match "${LATEST_MD}" '\| 主机 \| IP \| PID \| 进程名 \| 启动时间 \| 运行时长 \| Xmx \| GC Old% \| OOM \|' "Java 详情表头含启动时间和运行时长"
+    assert_not_contains "${LATEST_MD}" "| 主机 | IP | PID | 进程名 | Xmx | GC Old% | OOM | 日志路径 |" "Java 详情表头不再包含日志路径"
 fi
 
 # === Task 4: 附录 B Java 完整命令行 ===

@@ -70,7 +70,7 @@ if [[ -z "${LATEST_MD}" ]]; then
 else
     assert_match "${LATEST_MD}" '## 2\.1 总体结论' "问题汇总包含总体结论"
     assert_match "${LATEST_MD}" '本次共巡检 [0-9]+ 台服务器' "总体结论包含巡检服务器数量"
-    assert_match "${LATEST_MD}" '警告项' "总体结论包含警告项描述"
+    assert_match "${LATEST_MD}" '(当前.*警告项|本次未发现警告项)' "总体结论包含警告项描述"
     assert_match "${LATEST_MD}" '## 2\.2 严重问题' "严重问题章节顺延为 2.2"
     assert_match "${LATEST_MD}" '## 2\.3 警告项' "警告项章节顺延为 2.3"
     assert_match "${LATEST_MD}" '## 2\.4 建议优化项' "建议优化项章节顺延为 2.4"

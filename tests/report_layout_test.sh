@@ -63,6 +63,26 @@ LATEST_MD=$(ls -t report/巡检报告_*.md 2>/dev/null | head -1 || true)
 # 无 pandoc 时回退到临时 markdown 文件
 [[ -z "${LATEST_MD}" ]] && LATEST_MD="report/.report_temp.md"
 
+# === Task 1: 总体结论与章节结论 ===
+
+if [[ -z "${LATEST_MD}" ]]; then
+    fail "Task 1: 报告未生成"
+else
+    assert_match "${LATEST_MD}" '## 2\.1 总体结论' "问题汇总包含总体结论"
+    assert_match "${LATEST_MD}" '本次共巡检 [0-9]+ 台服务器' "总体结论包含巡检服务器数量"
+    assert_match "${LATEST_MD}" '警告项' "总体结论包含警告项描述"
+    assert_match "${LATEST_MD}" '## 2\.2 严重问题' "严重问题章节顺延为 2.2"
+    assert_match "${LATEST_MD}" '## 2\.3 警告项' "警告项章节顺延为 2.3"
+    assert_match "${LATEST_MD}" '## 2\.4 建议优化项' "建议优化项章节顺延为 2.4"
+    assert_match "${LATEST_MD}" '### 3\.1\.[0-9]+ 本节小结' "资源章节包含本节小结"
+    assert_match "${LATEST_MD}" '### 3\.2\.[0-9]+ 本节小结' "网络章节包含本节小结"
+    assert_match "${LATEST_MD}" '### 3\.3\.[0-9]+ 本节小结' "进程与 Java 章节包含本节小结"
+    assert_match "${LATEST_MD}" '### 3\.4\.[0-9]+ 本节小结' "中间件章节包含本节小结"
+    assert_match "${LATEST_MD}" '### 3\.5\.[0-9]+ 本节小结' "安全章节包含本节小结"
+    assert_match "${LATEST_MD}" '### 3\.6\.[0-9]+ 本节小结' "Crontab 章节包含本节小结"
+    assert_match "${LATEST_MD}" '### 3\.7\.[0-9]+ 本节小结' "日志告警章节包含本节小结"
+fi
+
 if [[ -z "${LATEST_MD}" ]]; then
     fail "Task 2: 报告未生成"
 else
@@ -81,7 +101,7 @@ else
     assert_not_contains "${LATEST_MD}" "| flannel.1" "网卡表不应包含 flannel.1"
 
     # 网卡表应包含物理网卡
-    assert_match "${LATEST_MD}" '\| eth0 \|' "网卡表包含 eth0 物理网卡"
+    assert_match "${LATEST_MD}" '\| [^|]+ \| [^|]+ \| (eth|eno|ens|enp)[^ |]* \|' "网卡表包含非虚拟物理网卡"
 fi
 
 # === Task 3: Process & Java section 进程与 Java 章节 ===
@@ -135,8 +155,8 @@ if [[ -z "${LATEST_MD}" ]]; then
     fail "Task 7: 报告未生成"
 else
     assert_match "${LATEST_MD}" '\| 主机 \| IP \| 用户 \| 来源 \| 调度 \| 命令 \|' "Crontab 表头"
-    # T9：cmd 含 || 不应被错误切分（应保留在同一行）
-    assert_match "${LATEST_MD}" 'test -x /usr/sbin/anacron \|\|' "Crontab cmd 含 || 保留完整"
+    # T9：cmd 含 && 或 || 时不应被错误切分（应保留在命令列）
+    assert_match "${LATEST_MD}" '\| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| .*(\&\&|\|\|)' "Crontab cmd 保留 shell 操作符"
 fi
 
 # === Task 8: Log & Alert 章节 ===

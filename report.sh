@@ -644,16 +644,18 @@ generate_issues_summary() {
 
 EOF
 
+    generate_overall_conclusion
+
     # Critical issues
     if [ ${#ISSUES_CRIT[@]} -gt 0 ]; then
-        echo "## 2.1 严重问题（需立即处理）" >> "${MD_FILE}"
+        echo "## 2.2 严重问题（需立即处理）" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         for issue in "${ISSUES_CRIT[@]}"; do
             echo "- ${issue}" >> "${MD_FILE}"
         done
         echo "" >> "${MD_FILE}"
     else
-        echo "## 2.1 严重问题" >> "${MD_FILE}"
+        echo "## 2.2 严重问题" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         echo "无严重问题。" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
@@ -661,14 +663,14 @@ EOF
 
     # Warnings
     if [ ${#ISSUES_WARN[@]} -gt 0 ]; then
-        echo "## 2.2 警告项（建议处理）" >> "${MD_FILE}"
+        echo "## 2.3 警告项（建议处理）" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         for issue in "${ISSUES_WARN[@]}"; do
             echo "- ${issue}" >> "${MD_FILE}"
         done
         echo "" >> "${MD_FILE}"
     else
-        echo "## 2.2 警告项" >> "${MD_FILE}"
+        echo "## 2.3 警告项" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         echo "无警告项。" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
@@ -676,14 +678,14 @@ EOF
 
     # Suggestions
     if [ ${#ISSUES_INFO[@]} -gt 0 ]; then
-        echo "## 2.3 建议优化项" >> "${MD_FILE}"
+        echo "## 2.4 建议优化项" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         for issue in "${ISSUES_INFO[@]}"; do
             echo "- ${issue}" >> "${MD_FILE}"
         done
         echo "" >> "${MD_FILE}"
     else
-        echo "## 2.3 建议优化项" >> "${MD_FILE}"
+        echo "## 2.4 建议优化项" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"
         echo "无优化建议。" >> "${MD_FILE}"
         echo "" >> "${MD_FILE}"

@@ -79,6 +79,8 @@ else
     assert_not_contains "${LATEST_MD}" "无警告项。" "样例存在章节警告发现时 2.3 不应宣称无警告项"
     assert_match "${LATEST_MD}" '## 2\.4 建议优化项' "建议优化项章节顺延为 2.4"
     assert_match "${LATEST_MD}" '^- \[章节 3\.[0-9]\]' "问题汇总包含章节发现明细"
+    assert_not_contains "${LATEST_MD}" "主机级状态统计为 3 台正常、0 台存在警告、0 台存在异常" "章节级 WARN/CRIT 应更新主机级状态统计"
+    assert_not_contains "${LATEST_MD}" "[章节 3.1] support-db 的磁盘 / 使用率为 90%" "已进入全局问题汇总的磁盘告警不应重复作为章节发现明细输出"
     assert_match "${LATEST_MD}" '### 3\.1\.[0-9]+ 本节小结' "资源章节包含本节小结"
     assert_match "${LATEST_MD}" '### 3\.2\.[0-9]+ 本节小结' "网络章节包含本节小结"
     assert_match "${LATEST_MD}" '### 3\.3\.[0-9]+ 本节小结' "进程与 Java 章节包含本节小结"

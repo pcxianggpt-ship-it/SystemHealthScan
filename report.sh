@@ -63,6 +63,8 @@ declare -a ISSUES_INFO=()
 declare -A SECTION_CRIT=()
 declare -A SECTION_WARN=()
 declare -A SECTION_INFO=()
+declare -A SECTION_COUNT_IN_SUMMARY=()
+declare -A SECTION_SERVER=()
 SECTION_FINDING_SECTIONS=("3.1" "3.2" "3.3" "3.4" "3.5" "3.6" "3.7")
 
 # =============================================================================
@@ -302,6 +304,24 @@ check_threshold() {
     echo "OK"
 }
 
+update_server_health() {
+    local level="$1"
+    local server="$2"
+
+    [ -z "${server}" ] && return
+
+    for i in "${!SERVER_HOSTNAMES[@]}"; do
+        if [ "${SERVER_HOSTNAMES[$i]}" = "${server}" ]; then
+            if [ "${level}" = "CRIT" ]; then
+                SERVER_HEALTH[$i]="CRIT"
+            elif [ "${level}" = "WARN" ] && [ "${SERVER_HEALTH[$i]}" != "CRIT" ]; then
+                SERVER_HEALTH[$i]="WARN"
+            fi
+            break
+        fi
+    done
+}
+
 # Record an issue
 add_issue() {
     local level="$1"  # CRIT / WARN / INFO
@@ -315,17 +335,7 @@ add_issue() {
         INFO) ISSUES_INFO+=("${entry}") ;;
     esac
 
-    # Update server health if worse
-    for i in "${!SERVER_HOSTNAMES[@]}"; do
-        if [ "${SERVER_HOSTNAMES[$i]}" = "${server}" ]; then
-            if [ "${level}" = "CRIT" ]; then
-                SERVER_HEALTH[$i]="CRIT"
-            elif [ "${level}" = "WARN" ] && [ "${SERVER_HEALTH[$i]}" != "CRIT" ]; then
-                SERVER_HEALTH[$i]="WARN"
-            fi
-            break
-        fi
-    done
+    update_server_health "${level}" "${server}"
 }
 
 section_key_count() {
@@ -345,6 +355,8 @@ add_section_finding() {
     local section="$1"
     local level="$2"
     local message="$3"
+    local count_in_summary="${4:-1}"
+    local server="${5:-}"
 
     [ -z "${message}" ] && return
 
@@ -359,29 +371,55 @@ add_section_finding() {
         CRIT)
             SECTION_CRIT["${count_key}"]="${count}"
             SECTION_CRIT["${item_key}"]="${message}"
+            SECTION_COUNT_IN_SUMMARY["${item_key}"]="${count_in_summary}"
+            SECTION_SERVER["${item_key}"]="${server}"
             ;;
         WARN)
             SECTION_WARN["${count_key}"]="${count}"
             SECTION_WARN["${item_key}"]="${message}"
+            SECTION_COUNT_IN_SUMMARY["${item_key}"]="${count_in_summary}"
+            SECTION_SERVER["${item_key}"]="${server}"
             ;;
         INFO)
             SECTION_INFO["${count_key}"]="${count}"
             SECTION_INFO["${item_key}"]="${message}"
+            SECTION_COUNT_IN_SUMMARY["${item_key}"]="${count_in_summary}"
+            SECTION_SERVER["${item_key}"]="${server}"
             ;;
     esac
+
+    if [ "${count_in_summary}" = "1" ]; then
+        update_server_health "${level}" "${server}"
+    fi
 }
 
 section_total_count() {
     local level="$1"
     local total=0
-    local section count
+    local section count i item_key
 
     for section in "${SECTION_FINDING_SECTIONS[@]}"; do
         count=$(section_key_count "${level}" "${section}")
-        total=$((total + count))
+        i=1
+        while [ "${i}" -le "${count}" ]; do
+            item_key="${section}__${level}__${i}"
+            if [ "${SECTION_COUNT_IN_SUMMARY[${item_key}]:-1}" = "1" ]; then
+                total=$((total + 1))
+            fi
+            i=$((i + 1))
+        done
     done
 
     echo "${total}"
+}
+
+section_finding_counts_in_summary() {
+    local level="$1"
+    local section="$2"
+    local index="$3"
+    local item_key="${section}__${level}__${index}"
+
+    [ "${SECTION_COUNT_IN_SUMMARY[${item_key}]:-1}" = "1" ]
 }
 
 section_finding_message() {
@@ -406,7 +444,7 @@ emit_section_findings_for_level() {
         i=1
         while [ "${i}" -le "${count}" ]; do
             msg=$(section_finding_message "${level}" "${section}" "${i}")
-            if [ -n "${msg}" ]; then
+            if [ -n "${msg}" ] && section_finding_counts_in_summary "${level}" "${section}" "${i}"; then
                 echo "- [章节 ${section}] ${msg}" >> "${MD_FILE}"
             fi
             i=$((i + 1))
@@ -434,7 +472,7 @@ emit_overall_warning_findings() {
         i=1
         while [ "${i}" -le "${count}" ]; do
             msg=$(section_finding_message "WARN" "${section}" "${i}")
-            if [ -n "${msg}" ]; then
+            if [ -n "${msg}" ] && section_finding_counts_in_summary "WARN" "${section}" "${i}"; then
                 if [ "${printed}" -lt "${limit}" ]; then
                     echo "- [章节 ${section}] ${msg}" >> "${MD_FILE}"
                     printed=$((printed + 1))
@@ -829,7 +867,7 @@ EOF
 
         if [ "${status}" != "OK" ]; then
             add_issue "${status}" "CPU 使用率 ${cpu_usage}% (${status})" "${hostname}"
-            add_section_finding "3.1" "${status}" "${hostname} 的 CPU 使用率为 ${cpu_usage}%"
+            add_section_finding "3.1" "${status}" "${hostname} 的 CPU 使用率为 ${cpu_usage}%" 0
         fi
 
         local status_text
@@ -863,7 +901,7 @@ EOF
 
         if [ "${status}" != "OK" ]; then
             add_issue "${status}" "内存使用率 ${mem_percent}% (${status})" "${hostname}"
-            add_section_finding "3.1" "${status}" "${hostname} 的内存使用率为 ${mem_percent}%"
+            add_section_finding "3.1" "${status}" "${hostname} 的内存使用率为 ${mem_percent}%" 0
         fi
 
         local status_text
@@ -891,7 +929,7 @@ EOF
             status=$(check_threshold "SWAP_PERCENT" "${swap_percent}")
             if [ "${status}" != "OK" ]; then
                 add_issue "${status}" "SWAP 使用率 ${swap_percent}% (${status})" "${hostname}"
-                add_section_finding "3.1" "${status}" "${hostname} 的 SWAP 使用率为 ${swap_percent}%"
+                add_section_finding "3.1" "${status}" "${hostname} 的 SWAP 使用率为 ${swap_percent}%" 0
             fi
         fi
     done
@@ -925,7 +963,7 @@ EOF
 
             if [ "${status}" != "OK" ]; then
                 add_issue "${status}" "磁盘 ${mount} 使用率 ${percent}% (${status})" "${hostname}"
-                add_section_finding "3.1" "${status}" "${hostname} 的磁盘 ${mount} 使用率为 ${percent}%"
+                add_section_finding "3.1" "${status}" "${hostname} 的磁盘 ${mount} 使用率为 ${percent}%" 0
             fi
 
             local status_text
@@ -965,7 +1003,7 @@ EOF
         local status
         status=$(check_threshold "IO_WAIT" "${io_wait}")
 
-        [ "${status}" != "OK" ] && add_section_finding "3.1" "${status}" "${hostname} 的 IO Wait 为 ${io_wait}%"
+        [ "${status}" != "OK" ] && add_section_finding "3.1" "${status}" "${hostname} 的 IO Wait 为 ${io_wait}%" 1 "${hostname}"
 
         local status_text
         case "${status}" in
@@ -1057,7 +1095,7 @@ EOF
                 s=$(check_threshold "${k}" "${v}")
                 if [ "${s}" != "OK" ]; then
                     add_issue "${s}" "TCP ${k} 连接数 ${v} (${s})" "${hostname}"
-                    add_section_finding "3.2" "${s}" "${hostname} 的 TCP ${k} 连接数为 ${v}"
+                    add_section_finding "3.2" "${s}" "${hostname} 的 TCP ${k} 连接数为 ${v}" 0
                 fi
             fi
         done
@@ -1154,7 +1192,7 @@ EOF
             s=$(check_threshold "ZOMBIE_COUNT" "${zombie}")
             if [ "${s}" != "OK" ]; then
                 add_issue "${s}" "僵尸进程数 ${zombie}" "${hostname}"
-                add_section_finding "3.3" "${s}" "${hostname} 的僵尸进程数为 ${zombie}"
+                add_section_finding "3.3" "${s}" "${hostname} 的僵尸进程数为 ${zombie}" 0
             fi
         fi
     done
@@ -1279,7 +1317,7 @@ EOF
             oom=$(get_val "$i" "JAVA_JVM_OOM_DUMP_${idx}")
             [[ -z "${oom}" ]] && oom="NONE"
             if [[ "${oom}" == FOUND:* ]]; then
-                add_section_finding "3.3" "CRIT" "${hostname} 的 Java 进程 ${pid} 发现 OOM Dump：${oom}"
+                add_section_finding "3.3" "CRIT" "${hostname} 的 Java 进程 ${pid} 发现 OOM Dump：${oom}" 1 "${hostname}"
             fi
 
             printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" \
@@ -1319,10 +1357,10 @@ EOF
         redis=$(get_val "$i" "REDIS_STATUS")
         nacos=$(get_val "$i" "NACOS_STATUS")
         if [[ "${redis}" == "NOT_RUNNING" ]]; then
-            add_section_finding "3.4" "WARN" "${hostname} 的 Redis 未运行"
+            add_section_finding "3.4" "WARN" "${hostname} 的 Redis 未运行" 1 "${hostname}"
         fi
         if [[ "${nacos}" == "NOT_RUNNING" ]]; then
-            add_section_finding "3.4" "WARN" "${hostname} 的 Nacos 未运行"
+            add_section_finding "3.4" "WARN" "${hostname} 的 Nacos 未运行" 1 "${hostname}"
         fi
         # REDIS_STATUS 可能是 "NOT_RUNNING" 或 "RUNNING|VERSION:..."；统一显示 RUNNING/NOT_RUNNING
         [[ "${redis}" == RUNNING* ]] && redis="RUNNING"
@@ -1334,7 +1372,7 @@ EOF
         local mysql_status
         mysql_status=$(get_val "$i" "MYSQL_STATUS")
         if [[ "${mysql_status}" == "NOT_RUNNING" ]]; then
-            add_section_finding "3.4" "WARN" "${hostname} 的 MySQL 未运行"
+            add_section_finding "3.4" "WARN" "${hostname} 的 MySQL 未运行" 1 "${hostname}"
         fi
         if [[ "${mysql_status}" == "RUNNING|"* ]]; then
             mysql_ver=$(echo "${mysql_status}" | grep -oE 'VERSION:[^|]+' | cut -d: -f2 || true)
@@ -1404,13 +1442,13 @@ EOF
         [[ -z "${empty_pw}" ]] && empty_pw="N/A"
         [[ -z "${max_auth}" ]] && max_auth="N/A"
         if [[ "${root_login}" == "yes" ]]; then
-            add_section_finding "3.5" "WARN" "${hostname} 允许 SSH Root 登录"
+            add_section_finding "3.5" "WARN" "${hostname} 允许 SSH Root 登录" 1 "${hostname}"
         fi
         if [[ "${pass_auth}" == "yes" ]]; then
-            add_section_finding "3.5" "WARN" "${hostname} 允许 SSH 密码认证"
+            add_section_finding "3.5" "WARN" "${hostname} 允许 SSH 密码认证" 1 "${hostname}"
         fi
         if [[ "${empty_pw}" == "yes" ]]; then
-            add_section_finding "3.5" "CRIT" "${hostname} 允许 SSH 空密码登录"
+            add_section_finding "3.5" "CRIT" "${hostname} 允许 SSH 空密码登录" 1 "${hostname}"
         fi
         printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
             "${hostname}" "${ip}" "${port}" "${root_login}" "${pass_auth}" "${empty_pw}" "${max_auth}" >> "${MD_FILE}"
@@ -1470,10 +1508,10 @@ EOF
         [[ -z "${locked}" ]]    && locked="N/A"
         [[ -z "${sudo_today}" ]] && sudo_today="N/A"
         if [[ "${ntp}" == ERROR* || "${ntp}" == "NOT_SYNCED" ]]; then
-            add_section_finding "3.5" "WARN" "${hostname} 的 NTP 同步状态为 ${ntp}"
+            add_section_finding "3.5" "WARN" "${hostname} 的 NTP 同步状态为 ${ntp}" 1 "${hostname}"
         fi
         if [[ "${locked}" =~ ^[0-9]+$ && "${locked}" -gt 0 ]]; then
-            add_section_finding "3.5" "INFO" "${hostname} 存在 ${locked} 个锁定用户"
+            add_section_finding "3.5" "INFO" "${hostname} 存在 ${locked} 个锁定用户" 1 "${hostname}"
         fi
         printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
             "${hostname}" "${ip}" "${selinux}" "${fail2ban}" "${ntp}" "${locked}" "${sudo_today}" >> "${MD_FILE}"
@@ -1596,9 +1634,9 @@ EOF
             detail="${part#*:}"
             [[ -z "${level}" || "${detail}" == "${part}" ]] && continue
             case "${level}" in
-                ERROR) add_section_finding "3.6" "CRIT" "${hostname} 的定时任务分析发现 ${detail}" ;;
-                WARN)  add_section_finding "3.6" "WARN" "${hostname} 的定时任务分析发现 ${detail}" ;;
-                INFO)  add_section_finding "3.6" "INFO" "${hostname} 的定时任务分析发现 ${detail}" ;;
+                ERROR) add_section_finding "3.6" "CRIT" "${hostname} 的定时任务分析发现 ${detail}" 1 "${hostname}" ;;
+                WARN)  add_section_finding "3.6" "WARN" "${hostname} 的定时任务分析发现 ${detail}" 1 "${hostname}" ;;
+                INFO)  add_section_finding "3.6" "INFO" "${hostname} 的定时任务分析发现 ${detail}" 1 "${hostname}" ;;
             esac
         done
     done
@@ -1651,19 +1689,19 @@ EOF
         # OOM 触发则记录 CRIT
         if [[ "${oom_count}" =~ ^[0-9]+$ ]] && [[ "${oom_count}" -gt 0 ]]; then
             add_issue "CRIT" "OOM Killer 今日触发 ${oom} 次" "${hostname}"
-            add_section_finding "3.7" "CRIT" "${hostname} 今日 OOM Killer 触发 ${oom}"
+            add_section_finding "3.7" "CRIT" "${hostname} 今日 OOM Killer 触发 ${oom}" 0
         fi
         if [[ "${kernel_count}" =~ ^[0-9]+$ && "${kernel_count}" -gt 0 ]]; then
-            add_section_finding "3.7" "WARN" "${hostname} 今日内核错误 ${kernel_err}"
+            add_section_finding "3.7" "WARN" "${hostname} 今日内核错误 ${kernel_err}" 1 "${hostname}"
         fi
         if [[ "${segfault_count}" =~ ^[0-9]+$ && "${segfault_count}" -gt 0 ]]; then
-            add_section_finding "3.7" "WARN" "${hostname} 今日段错误 ${segfault}"
+            add_section_finding "3.7" "WARN" "${hostname} 今日段错误 ${segfault}" 1 "${hostname}"
         fi
         if [[ "${syslog_count}" =~ ^[0-9]+$ && "${syslog_count}" -gt 0 ]]; then
-            add_section_finding "3.7" "WARN" "${hostname} 今日日志错误 ${syslog_err}"
+            add_section_finding "3.7" "WARN" "${hostname} 今日日志错误 ${syslog_err}" 1 "${hostname}"
         fi
         if [[ -n "${sec_alert}" && "${sec_alert}" != "NONE" && "${sec_alert}" != "N/A" ]]; then
-            add_section_finding "3.7" "WARN" "${hostname} 存在安全告警 ${sec_alert}"
+            add_section_finding "3.7" "WARN" "${hostname} 存在安全告警 ${sec_alert}" 1 "${hostname}"
         fi
 
         [[ -z "${auth_fail}" ]]   && auth_fail="N/A"
